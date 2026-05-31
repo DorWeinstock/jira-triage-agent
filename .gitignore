@@ -1,0 +1,8 @@
+# binary
+jira-triage-agent
+
+# local config
+.env
+
+# Go
+vendor/
