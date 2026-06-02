@@ -6,17 +6,17 @@ import (
 	"net/http"
 	"strings"
 
-	jira "github.com/andygrunwald/go-jira/v2/cloud"
+	jira "github.com/andygrunwald/go-jira/v2/onpremise"
 )
 
 type JiraClient struct {
 	client *jira.Client
 }
 
-func newJiraClient(url, email, token string) (*JiraClient, error) {
+func newJiraClient(url, username, password string) (*JiraClient, error) {
 	tp := jira.BasicAuthTransport{
-		Username: email,
-		APIToken: token,
+		Username: username,
+		Password: password,
 	}
 	client, err := jira.NewClient(url, &http.Client{Transport: &tp})
 	if err != nil {
@@ -27,7 +27,6 @@ func newJiraClient(url, email, token string) (*JiraClient, error) {
 
 // findIncomingTickets returns unprocessed ai-generated tickets assigned to any of the given team members.
 func (j *JiraClient) findIncomingTickets(project string, teamMembers []string, processedLabel string) ([]jira.Issue, error) {
-	// Build: assignee in ("id1","id2",...)
 	quoted := make([]string, len(teamMembers))
 	for i, id := range teamMembers {
 		quoted[i] = `"` + id + `"`
@@ -61,10 +60,10 @@ func (j *JiraClient) findIncomingTickets(project string, teamMembers []string, p
 	return all, nil
 }
 
-func (j *JiraClient) reassign(issueKey, accountID string) error {
-	_, err := j.client.Issue.UpdateAssignee(context.Background(), issueKey, &jira.User{AccountID: accountID})
+func (j *JiraClient) reassign(issueKey, username string) error {
+	_, err := j.client.Issue.UpdateAssignee(context.Background(), issueKey, &jira.User{Name: username})
 	if err != nil {
-		return fmt.Errorf("reassigning %s to %s: %w", issueKey, accountID, err)
+		return fmt.Errorf("reassigning %s to %s: %w", issueKey, username, err)
 	}
 	return nil
 }

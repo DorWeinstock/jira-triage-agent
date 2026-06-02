@@ -13,6 +13,7 @@ metadata:
 spec:
   accessModes:
     - ReadWriteOnce
+  storageClassName: local-path
   resources:
     requests:
       storage: 200Gi
@@ -69,8 +70,12 @@ spec:
           resources:
             limits:
               habana.ai/gaudi: 1
+              cpu: "16"
+              memory: "32Gi"
             requests:
               habana.ai/gaudi: 1
+              cpu: "4"
+              memory: "16Gi"
           volumeMounts:
             - name: model-cache
               mountPath: /data/hf-cache

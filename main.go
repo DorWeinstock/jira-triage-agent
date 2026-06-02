@@ -11,7 +11,7 @@ func main() {
 		log.Fatalf("Config error: %v", err)
 	}
 
-	jiraClient, err := newJiraClient(cfg.JiraURL, cfg.JiraEmail, cfg.JiraToken)
+	jiraClient, err := newJiraClient(cfg.JiraURL, cfg.JiraUsername, cfg.JiraPassword)
 	if err != nil {
 		log.Fatalf("Jira client error: %v", err)
 	}

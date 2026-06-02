@@ -9,8 +9,8 @@ import (
 
 type Config struct {
 	JiraURL        string
-	JiraEmail      string
-	JiraToken      string
+	JiraUsername   string
+	JiraPassword   string
 	JiraProject    string
 	ProcessedLabel string
 	TeamMembers    []string
@@ -30,13 +30,13 @@ func loadConfig() (Config, error) {
 		members[i] = strings.TrimSpace(members[i])
 	}
 	if len(members) == 0 || (len(members) == 1 && members[0] == "") {
-		return Config{}, fmt.Errorf("TEAM_MEMBERS must be a non-empty comma-separated list of Jira account IDs")
+		return Config{}, fmt.Errorf("TEAM_MEMBERS must be a non-empty comma-separated list of Jira usernames")
 	}
 
 	cfg := Config{
 		JiraURL:        requireEnv("JIRA_URL"),
-		JiraEmail:      requireEnv("JIRA_EMAIL"),
-		JiraToken:      requireEnv("JIRA_TOKEN"),
+		JiraUsername:   requireEnv("JIRA_USERNAME"),
+		JiraPassword:   requireEnv("JIRA_PASSWORD"),
 		JiraProject:    getEnv("JIRA_PROJECT", "GAUDISW"),
 		ProcessedLabel: getEnv("PROCESSED_LABEL", "triage-agent-done"),
 		TeamMembers:    members,

@@ -6,8 +6,8 @@ metadata:
   namespace: jira-triage-agent
 type: Opaque
 stringData:
-  JIRA_EMAIL: "your-service-account@intel.com"
-  JIRA_TOKEN: "your-jira-api-token"
+  JIRA_USERNAME: "your-intel-username"
+  JIRA_PASSWORD: "your-intel-password"
 
 ---
 apiVersion: apps/v1
@@ -35,16 +35,16 @@ spec:
               value: "https://jira.devtools.intel.com"
             - name: JIRA_PROJECT
               value: "GAUDISW"
-            - name: JIRA_EMAIL
+            - name: JIRA_USERNAME
               valueFrom:
                 secretKeyRef:
                   name: triage-agent-secrets
-                  key: JIRA_EMAIL
-            - name: JIRA_TOKEN
+                  key: JIRA_USERNAME
+            - name: JIRA_PASSWORD
               valueFrom:
                 secretKeyRef:
                   name: triage-agent-secrets
-                  key: JIRA_TOKEN
+                  key: JIRA_PASSWORD
             - name: TEAM_MEMBERS
               value: "dweinsto,davidtal,gennadyd"
             - name: PROCESSED_LABEL
