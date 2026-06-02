@@ -45,44 +45,37 @@ func (a *Agent) run() error {
 
 func (a *Agent) process(ctx context.Context, issue *jira.Issue) error {
 	if !isAIGenerated(issue) {
-		// Not AI-generated — route to team without evaluation.
-		return a.handleValid(issue, "not AI-generated")
+		return a.handleValid(issue)
 	}
 
-	verdict, reason, err := a.evaluator.Evaluate(ctx, issue.Fields.Summary, issue.Fields.Description)
+	result, err := a.evaluator.Evaluate(ctx, issue.Fields.Summary, issue.Fields.Description)
 	if err != nil {
 		return fmt.Errorf("evaluating %s: %w", issue.Key, err)
 	}
 
-	log.Printf("%s: verdict=%s reason=%q", issue.Key, verdict, reason)
+	log.Printf("%s: verdict=%s jenkins=%v server=%v scope=%s",
+		issue.Key, result.Verdict, result.JenkinsLinkFound, result.ServerNameFound, result.Scope)
 
-	if verdict == VerdictSpam {
-		return a.handleSpam(issue, reason)
+	if result.Verdict == VerdictSpam {
+		return a.handleSpam(issue, result.Comment)
 	}
-	return a.handleValid(issue, reason)
+	return a.handleValid(issue)
 }
 
-// isAIGenerated returns true when the ticket carries the known AI-generation
-// signals — label and body marker — indicating it needs evaluation.
+// isAIGenerated returns true when both signals are present, indicating the
+// ticket was created by the QA AI agent and needs evaluation.
 func isAIGenerated(issue *jira.Issue) bool {
 	return hasLabel(issue, aiGeneratedLabel) &&
 		strings.Contains(issue.Fields.Description, aiBodyMarker)
 }
 
-func (a *Agent) handleSpam(issue *jira.Issue, reason string) error {
-	log.Printf("%s: spam — reassigning to reporter", issue.Key)
+func (a *Agent) handleSpam(issue *jira.Issue, comment string) error {
+	log.Printf("%s: returning to reporter — %s", issue.Key, comment)
 
 	if issue.Fields.Reporter == nil {
-		log.Printf("%s: no reporter, skipping reassignment", issue.Key)
+		log.Printf("%s: no reporter found, skipping reassignment", issue.Key)
 		return a.jira.addLabel(issue, a.cfg.ProcessedLabel)
 	}
-
-	comment := fmt.Sprintf(
-		"This ticket was automatically reviewed and determined to be insufficiently validated.\n\n"+
-			"Reason: %s\n\n"+
-			"It has been reassigned to the original reporter for review before being actioned by the team.",
-		reason,
-	)
 
 	if err := a.jira.reassign(issue.Key, issue.Fields.Reporter.AccountID); err != nil {
 		return err
@@ -93,9 +86,9 @@ func (a *Agent) handleSpam(issue *jira.Issue, reason string) error {
 	return a.jira.addLabel(issue, a.cfg.ProcessedLabel)
 }
 
-func (a *Agent) handleValid(issue *jira.Issue, reason string) error {
+func (a *Agent) handleValid(issue *jira.Issue) error {
 	assignee := a.nextMember()
-	log.Printf("%s: valid — assigning to %s (%s)", issue.Key, assignee, reason)
+	log.Printf("%s: valid — assigning to %s", issue.Key, assignee)
 
 	if err := a.jira.reassign(issue.Key, assignee); err != nil {
 		return err
