@@ -22,13 +22,12 @@ const (
 
 type Client struct {
 	baseURL    string
-	username   string
-	password   string
+	pat        string
 	httpClient *http.Client
 	limiter    *rate.Limiter
 }
 
-func NewClient(baseURL, username, password string) *Client {
+func NewClient(baseURL, pat string) *Client {
 	// Skip TLS verification for internal corporate Jira servers
 	transport := &http.Transport{
 		TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
@@ -38,9 +37,8 @@ func NewClient(baseURL, username, password string) *Client {
 	transport.Proxy = http.ProxyFromEnvironment
 
 	return &Client{
-		baseURL:  baseURL,
-		username: username,
-		password: password,
+		baseURL: baseURL,
+		pat:     pat,
 		httpClient: &http.Client{
 			Timeout:   30 * time.Second,
 			Transport: transport,
@@ -154,7 +152,7 @@ func (c *Client) GetTicket(ctx context.Context, ticketID string) (*Ticket, error
 		return nil, fmt.Errorf("creating request: %w", err)
 	}
 
-	req.SetBasicAuth(c.username, c.password)
+	req.Header.Set("Authorization", "Bearer "+c.pat)
 
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
@@ -191,7 +189,7 @@ func (c *Client) SearchTickets(ctx context.Context, jql string, maxResults int) 
 		return nil, fmt.Errorf("creating request: %w", err)
 	}
 
-	req.SetBasicAuth(c.username, c.password)
+	req.Header.Set("Authorization", "Bearer "+c.pat)
 
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
@@ -232,7 +230,7 @@ func (c *Client) AddComment(ctx context.Context, ticketID, comment string) (*Com
 		return nil, fmt.Errorf("creating request: %w", err)
 	}
 
-	req.SetBasicAuth(c.username, c.password)
+	req.Header.Set("Authorization", "Bearer "+c.pat)
 	req.Header.Set("Content-Type", "application/json")
 
 	resp, err := c.httpClient.Do(req)
@@ -283,7 +281,7 @@ func (c *Client) AddLabel(ctx context.Context, ticketID, label string) error {
 		return fmt.Errorf("creating request: %w", err)
 	}
 
-	req.SetBasicAuth(c.username, c.password)
+	req.Header.Set("Authorization", "Bearer "+c.pat)
 	req.Header.Set("Content-Type", "application/json")
 
 	resp, err := c.httpClient.Do(req)
@@ -323,7 +321,7 @@ func (c *Client) RemoveLabel(ctx context.Context, ticketID, label string) error 
 		return fmt.Errorf("creating request: %w", err)
 	}
 
-	req.SetBasicAuth(c.username, c.password)
+	req.Header.Set("Authorization", "Bearer "+c.pat)
 	req.Header.Set("Content-Type", "application/json")
 
 	resp, err := c.httpClient.Do(req)
@@ -363,7 +361,7 @@ func (c *Client) TransitionIssue(ctx context.Context, ticketID, transitionID str
 		return fmt.Errorf("creating request: %w", err)
 	}
 
-	req.SetBasicAuth(c.username, c.password)
+	req.Header.Set("Authorization", "Bearer "+c.pat)
 	req.Header.Set("Content-Type", "application/json")
 
 	resp, err := c.httpClient.Do(req)
@@ -400,7 +398,7 @@ func (c *Client) UpdateAssignee(ctx context.Context, ticketID, username string) 
 		return fmt.Errorf("creating request: %w", err)
 	}
 
-	req.SetBasicAuth(c.username, c.password)
+	req.Header.Set("Authorization", "Bearer "+c.pat)
 	req.Header.Set("Content-Type", "application/json")
 
 	resp, err := c.httpClient.Do(req)

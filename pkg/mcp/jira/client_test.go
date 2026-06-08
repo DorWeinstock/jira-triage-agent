@@ -31,7 +31,7 @@ func TestGetTicket(t *testing.T) {
 	}))
 	defer server.Close()
 
-	client := jira.NewClient(server.URL, "test@example.com", "token")
+	client := jira.NewClient(server.URL, "test-pat")
 	ticket, err := client.GetTicket(context.Background(), "TEST-123")
 
 	if err != nil {
@@ -83,7 +83,7 @@ func TestGetTicketWithComments(t *testing.T) {
 	}))
 	defer server.Close()
 
-	client := jira.NewClient(server.URL, "test@example.com", "token")
+	client := jira.NewClient(server.URL, "test-pat")
 	ticket, err := client.GetTicket(context.Background(), "TEST-456")
 
 	if err != nil {
@@ -123,7 +123,7 @@ func TestGetTicket_NotFound(t *testing.T) {
 	}))
 	defer server.Close()
 
-	client := jira.NewClient(server.URL, "test@example.com", "token")
+	client := jira.NewClient(server.URL, "test-pat")
 	_, err := client.GetTicket(context.Background(), "NOTFOUND-999")
 
 	if err == nil {
@@ -140,7 +140,7 @@ func TestGetTicket_Unauthorized(t *testing.T) {
 	}))
 	defer server.Close()
 
-	client := jira.NewClient(server.URL, "test@example.com", "bad-token")
+	client := jira.NewClient(server.URL, "bad-pat")
 	_, err := client.GetTicket(context.Background(), "TEST-123")
 
 	if err == nil {
@@ -162,7 +162,7 @@ func TestSearchTickets(t *testing.T) {
 	}))
 	defer server.Close()
 
-	client := jira.NewClient(server.URL, "test@example.com", "token")
+	client := jira.NewClient(server.URL, "test-pat")
 	tickets, err := client.SearchTickets(context.Background(), "project = TEST", 10)
 
 	if err != nil {
@@ -194,7 +194,7 @@ func TestAddComment(t *testing.T) {
 	}))
 	defer server.Close()
 
-	client := jira.NewClient(server.URL, "test@example.com", "token")
+	client := jira.NewClient(server.URL, "test-pat")
 	comment, err := client.AddComment(context.Background(), "TEST-123", "Test comment")
 
 	if err != nil {
@@ -223,7 +223,7 @@ func TestAddLabel(t *testing.T) {
 	}))
 	defer server.Close()
 
-	client := jira.NewClient(server.URL, "test@example.com", "token")
+	client := jira.NewClient(server.URL, "test-pat")
 	err := client.AddLabel(context.Background(), "TEST-123", "ai-agent-investigated")
 
 	if err != nil {
@@ -256,7 +256,7 @@ func TestTransitionIssue(t *testing.T) {
 	}))
 	defer server.Close()
 
-	client := jira.NewClient(server.URL, "test@example.com", "token")
+	client := jira.NewClient(server.URL, "test-pat")
 	err := client.TransitionIssue(context.Background(), "TEST-123", "21")
 
 	if err != nil {
@@ -273,7 +273,7 @@ func TestTransitionIssue_InvalidTransition(t *testing.T) {
 	}))
 	defer server.Close()
 
-	client := jira.NewClient(server.URL, "test@example.com", "token")
+	client := jira.NewClient(server.URL, "test-pat")
 	err := client.TransitionIssue(context.Background(), "TEST-123", "999")
 
 	if err == nil {
@@ -318,7 +318,7 @@ func TestRemoveLabel(t *testing.T) {
 	}))
 	defer server.Close()
 
-	client := jira.NewClient(server.URL, "test@example.com", "token")
+	client := jira.NewClient(server.URL, "test-pat")
 	err := client.RemoveLabel(context.Background(), "TEST-123", "ai-investigate-in-progress")
 
 	if err != nil {

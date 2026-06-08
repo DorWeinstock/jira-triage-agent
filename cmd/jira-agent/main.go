@@ -27,7 +27,7 @@ func main() {
 		zapLog.Fatal("invalid configuration", zap.Error(err))
 	}
 
-	jiraClient := jiramcp.NewClient(cfg.JiraURL, cfg.JiraUsername, cfg.JiraPassword)
+	jiraClient := jiramcp.NewClient(cfg.JiraURL, cfg.JiraPAT)
 
 	r := setupRouter(cfg, jiraClient, zapLog)
 

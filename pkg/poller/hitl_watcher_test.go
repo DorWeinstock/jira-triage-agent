@@ -473,7 +473,7 @@ func TestCheckTicketComments_SkipsOldApproveComments(t *testing.T) {
 	}))
 	defer server.Close()
 
-	jiraClient := jira.NewClient(server.URL, "test@bot.com", "token")
+	jiraClient := jira.NewClient(server.URL, "test-pat")
 	watcher := NewHITLWatcher(jiraClient, server.URL, "bot@example.com", time.Minute, 8*time.Hour, zap.NewNop())
 
 	watcher.AddPending("TEST-123", "thread-1", requestedAt)

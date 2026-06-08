@@ -23,7 +23,7 @@ func TestTransitionToInProgress(t *testing.T) {
 	}))
 	defer jiraServer.Close()
 
-	client := jira.NewClient(jiraServer.URL, "test@example.com", "token")
+	client := jira.NewClient(jiraServer.URL, "test-pat")
 	handler := NewTransitionHandler(client, "11", "31", "41", zap.NewNop())
 
 	r := chi.NewRouter()
@@ -59,7 +59,7 @@ func TestTransitionToInReview(t *testing.T) {
 	}))
 	defer jiraServer.Close()
 
-	client := jira.NewClient(jiraServer.URL, "test@example.com", "token")
+	client := jira.NewClient(jiraServer.URL, "test-pat")
 	handler := NewTransitionHandler(client, "11", "31", "41", zap.NewNop())
 
 	r := chi.NewRouter()
@@ -94,7 +94,7 @@ func TestTransitionToInProgressChainsTwoTransitions(t *testing.T) {
 	}))
 	defer jiraServer.Close()
 
-	client := jira.NewClient(jiraServer.URL, "test@example.com", "token")
+	client := jira.NewClient(jiraServer.URL, "test-pat")
 	handler := NewTransitionHandler(client, "11", "31", "41", zap.NewNop())
 
 	r := chi.NewRouter()
@@ -116,7 +116,7 @@ func TestTransitionToInProgressChainsTwoTransitions(t *testing.T) {
 }
 
 func TestTransitionNotConfigured(t *testing.T) {
-	client := jira.NewClient("http://fake", "test@example.com", "token")
+	client := jira.NewClient("http://fake", "test-pat")
 	handler := NewTransitionHandler(client, "", "", "", zap.NewNop())
 
 	r := chi.NewRouter()
@@ -138,7 +138,7 @@ func TestTransitionJiraError(t *testing.T) {
 	}))
 	defer jiraServer.Close()
 
-	client := jira.NewClient(jiraServer.URL, "test@example.com", "token")
+	client := jira.NewClient(jiraServer.URL, "test-pat")
 	handler := NewTransitionHandler(client, "11", "31", "41", zap.NewNop())
 
 	r := chi.NewRouter()

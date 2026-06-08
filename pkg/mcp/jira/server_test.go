@@ -11,7 +11,7 @@ import (
 )
 
 func TestNewServer(t *testing.T) {
-	client := jira.NewClient("http://example.com", "test@example.com", "token")
+	client := jira.NewClient("http://example.com", "test-pat")
 	server := jira.NewMCPServer(client)
 
 	if server == nil {
@@ -29,7 +29,7 @@ func TestServerToolsRegistration(t *testing.T) {
 	}))
 	defer mockServer.Close()
 
-	client := jira.NewClient(mockServer.URL, "test@example.com", "token")
+	client := jira.NewClient(mockServer.URL, "test-pat")
 	mcpServer := jira.NewMCPServer(client)
 
 	if mcpServer == nil {
@@ -59,7 +59,7 @@ func TestServerIntegration_GetTicket(t *testing.T) {
 	}))
 	defer mockServer.Close()
 
-	client := jira.NewClient(mockServer.URL, "test@example.com", "token")
+	client := jira.NewClient(mockServer.URL, "test-pat")
 	_ = jira.NewMCPServer(client)
 
 	// Verify the client works (which the MCP tool wraps)
@@ -98,7 +98,7 @@ func TestServerIntegration_SearchTickets(t *testing.T) {
 	}))
 	defer mockServer.Close()
 
-	client := jira.NewClient(mockServer.URL, "test@example.com", "token")
+	client := jira.NewClient(mockServer.URL, "test-pat")
 	_ = jira.NewMCPServer(client)
 
 	// Verify client works with default max_results (10)
@@ -141,7 +141,7 @@ func TestServerIntegration_AddComment(t *testing.T) {
 	}))
 	defer mockServer.Close()
 
-	client := jira.NewClient(mockServer.URL, "test@example.com", "token")
+	client := jira.NewClient(mockServer.URL, "test-pat")
 	_ = jira.NewMCPServer(client)
 
 	comment, err := client.AddComment(context.Background(), "TEST-123", "Test comment")
@@ -167,7 +167,7 @@ func TestServerIntegration_TransitionIssue(t *testing.T) {
 	}))
 	defer mockServer.Close()
 
-	client := jira.NewClient(mockServer.URL, "test@example.com", "token")
+	client := jira.NewClient(mockServer.URL, "test-pat")
 	_ = jira.NewMCPServer(client)
 
 	err := client.TransitionIssue(context.Background(), "TEST-123", "21")
@@ -189,7 +189,7 @@ func TestServerIntegration_AddLabel(t *testing.T) {
 	}))
 	defer mockServer.Close()
 
-	client := jira.NewClient(mockServer.URL, "test@example.com", "token")
+	client := jira.NewClient(mockServer.URL, "test-pat")
 	_ = jira.NewMCPServer(client)
 
 	err := client.AddLabel(context.Background(), "TEST-123", "ai-investigated")

@@ -12,10 +12,9 @@ type Config struct {
 	// Server
 	Port string
 
-	// Jira (self-hosted — username + password, not email + API token)
-	JiraURL      string
-	JiraUsername string
-	JiraPassword string
+	// Jira (self-hosted — PAT via Bearer token auth)
+	JiraURL string
+	JiraPAT string
 
 	// Filters
 	FilterProject   string
@@ -42,11 +41,8 @@ func (c *Config) Validate() error {
 	if c.JiraURL == "" {
 		return errors.New("missing Jira URL")
 	}
-	if c.JiraUsername == "" {
-		return errors.New("missing Jira username (JIRA_USERNAME)")
-	}
-	if c.JiraPassword == "" {
-		return errors.New("missing Jira password (JIRA_PASSWORD)")
+	if c.JiraPAT == "" {
+		return errors.New("missing Jira PAT (JIRA_PAT)")
 	}
 	if len(c.TeamMembers) == 0 {
 		return errors.New("missing team members (TEAM_MEMBERS)")
@@ -64,8 +60,7 @@ func LoadConfig() *Config {
 	return &Config{
 		Port:                    getenv("PORT", "8080"),
 		JiraURL:                 getenv("JIRA_URL", ""),
-		JiraUsername:            getenv("JIRA_USERNAME", ""),
-		JiraPassword:            getenv("JIRA_PASSWORD", ""),
+		JiraPAT:                 getenv("JIRA_PAT", ""),
 		FilterProject:           getenv("FILTER_PROJECT", "GAUDISW"),
 		FilterComponent:         getenv("FILTER_COMPONENT", "DevOps_K8S"),
 		FilterIssueType:         getenv("FILTER_ISSUE_TYPE", ""),
