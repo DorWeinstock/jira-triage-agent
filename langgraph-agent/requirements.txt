@@ -1,0 +1,22 @@
+langgraph>=0.2.0
+langchain>=0.3.0
+langchain-openai>=0.3.0
+mcp>=1.0.0
+python-dotenv>=1.0.0
+httpx>=0.27.0
+# Retry logic with exponential backoff
+tenacity>=8.2.0
+# Structured logging for production
+structlog>=24.0.0
+# Type-safe configuration with environment variable parsing
+pydantic>=2.5.0
+pydantic-settings>=2.1.0
+# Kubernetes API for ConfigMap-based checkpointing
+kubernetes-asyncio>=30.0.0
+# FastAPI HTTP server
+fastapi>=0.100.0
+uvicorn>=0.23.0
+# Rate limiting for API endpoints
+slowapi>=0.1.9
+# Fuzzy string matching for log deduplication
+rapidfuzz>=3.0.0

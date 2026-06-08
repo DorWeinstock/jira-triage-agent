@@ -1,0 +1,27 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+  - ../../base
+
+namespace: jira-k8s-agent
+
+# Override images with internal registry paths
+# Update newTag when deploying new versions
+images:
+  - name: jira-agent
+    newName: registry.internal.example.com/jira-k8s-agent/jira-agent
+    newTag: "1.0.0"
+  - name: langgraph-agent-fresh
+    newName: registry.internal.example.com/jira-k8s-agent/langgraph-agent
+    newTag: "1.0.0"
+
+# Cluster-specific patches (if needed)
+# patches:
+#   - target:
+#       kind: Deployment
+#       name: jira-agent
+#     patch: |-
+#       - op: replace
+#         path: /spec/template/spec/containers/0/env/3/value
+#         value: "DIFFERENT_PROJECT"

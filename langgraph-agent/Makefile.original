@@ -1,0 +1,795 @@
+# LangGraph Agent Local Development Makefile
+# For full e2e testing, use the root Makefile: cd .. && make e2e-full
+
+.PHONY: test-k8s-tools setup-mcp-port-forward cleanup-port-forwards
+
+TICKET_ID ?= PROJ-123
+
+# Local testing targets
+setup-mcp-port-forward:
+	@echo "Setting up jira-agent MCP port forward..."
+	@-pgrep -f "kubectl port-forward svc/jira-agent" | xargs -r kill 2>/dev/null || true
+	@sleep 1
+	@kubectl port-forward svc/jira-agent 8080:8080 -n $(NAMESPACE) > /tmp/mcp-pf.log 2>&1 &
+	@sleep 3
+	@if ! lsof -i :8080 > /dev/null 2>&1; then \
+		echo "ERROR: MCP port forward failed. Check /tmp/mcp-pf.log"; \
+		cat /tmp/mcp-pf.log; \
+		exit 1; \
+	fi
+	@echo "MCP port forward ready!"
+
+cleanup-port-forwards:
+	@echo "Cleaning up port forwards..."
+	@-pgrep -f "kubectl port-forward svc/jira-agent" | xargs -r kill 2>/dev/null || true
+	@rm -f /tmp/mcp-pf.log 2>/dev/null || true
+
+test-k8s-tools: setup-mcp-port-forward
+	@echo "Testing K8s MCP tools..."
+	@echo "========================================"
+	@python ../tests/smoke/test_k8s_mcp.py || { \
+		$(MAKE) cleanup-port-forwards; \
+		exit 1; \
+	}
+	@echo "========================================"
+	@echo "K8s tools test completed!"
+	@$(MAKE) cleanup-port-forwards
+
+# For full workflow testing, use the root Makefile
+help:
+	@echo "LangGraph Agent Local Development"
+	@echo "=================================="
+	@echo ""
+	@echo "Local Testing:"
+	@echo "  make test-k8s-tools     - Test K8s MCP connection"
+	@echo ""
+	@echo "Remediation Tests:"
+	@echo "  make test-remediation-1        - Test 1: Scale deployment (0 replicas)"
+	@echo "  make test-remediation-2        - Test 2: ConfigMap from historical knowledge"
+	@echo "  make test-concurrent-dispatch  - Test concurrent dispatch of 2 tickets"
+	@echo ""
+	@echo "HITL Tests (requires HITL_ENABLED=true on deployment):"
+	@echo "  make test-hitl-remediation-1              - Auto-approve via HTTP API (for CI)"
+	@echo "  make test-hitl-remediation-1-jira-comment - Real Jira comment approval flow"
+	@echo "  make test-hitl-remediation-2-jira-comment - Jira comment approval for ConfigMap remediation"
+	@echo ""
+	@echo "For full e2e testing:"
+	@echo "  cd .. && make e2e-full"
+	@echo ""
+
+# ============================================================================
+# REMEDIATION TEST TARGETS
+# ============================================================================
+
+KIND_CLUSTER ?= kagent-test
+KUBE_CONTEXT ?= kind-$(KIND_CLUSTER)
+NAMESPACE ?= jira-k8s-agent
+PROD_NAMESPACE ?= production
+JIRA_PROJECT ?= GAUDISW
+JIRA_ISSUE_TYPE ?= Bug
+JIRA_COMPONENT ?= DevOps_K8S
+
+# Test 1: Deployment scaled to 0 replicas
+# Agent should diagnose and scale it back up
+# ----------------------------------------------------------------------------
+
+.PHONY: test-remediation-1-setup test-remediation-1-create-ticket test-remediation-1-run test-remediation-1 test-remediation-1-verify test-remediation-1-cleanup
+
+test-remediation-1-setup:
+	@echo "╔══════════════════════════════════════════════════════════════════╗"
+	@echo "║  TEST 1: Deployment with 0 replicas                             ║"
+	@echo "╚══════════════════════════════════════════════════════════════════╝"
+	@echo ""
+	@echo "Setting up order-service deployment with 0 replicas..."
+	@kubectl --context $(KUBE_CONTEXT) apply -f ../tests/fixtures/k8s-manifests/order-service.yaml
+	@echo ""
+	@echo "✓ Deployment created with 0 replicas"
+	@kubectl --context $(KUBE_CONTEXT) get deployment order-service -n $(PROD_NAMESPACE)
+
+test-remediation-1-create-ticket:
+	@echo "Creating Jira ticket for Test 1..."
+	@JIRA_SERVER=$$(kubectl --context $(KUBE_CONTEXT) get secret jira-k8s-agent-secret -n $(NAMESPACE) -o jsonpath='{.data.jira-url}' | base64 -d) && \
+	JIRA_EMAIL=$$(kubectl --context $(KUBE_CONTEXT) get secret jira-k8s-agent-secret -n $(NAMESPACE) -o jsonpath='{.data.jira-email}' | base64 -d) && \
+	JIRA_TOKEN=$$(kubectl --context $(KUBE_CONTEXT) get secret jira-k8s-agent-secret -n $(NAMESPACE) -o jsonpath='{.data.jira-api-token}' | base64 -d) && \
+	TICKET=$$(curl -s -k -X POST "$$JIRA_SERVER/rest/api/2/issue" \
+		-H "Content-Type: application/json" \
+		-u "$$JIRA_EMAIL:$$JIRA_TOKEN" \
+		-d '{"fields": {"project": {"key": "$(JIRA_PROJECT)"}, "summary": "order-service is down in production - no pods running", "description": "The order-service deployment in production namespace has no running pods. Service is completely unavailable. Please investigate and restore service.", "issuetype": {"name": "$(JIRA_ISSUE_TYPE)"}, "components": [{"name": "$(JIRA_COMPONENT)"}], "labels": ["ai-investigate"], "assignee": {"name": "anoah"}, "customfield_24301": [{"name": "Unknown"}], "customfield_20821": {"value": "No"}}}' | jq -r '.key') && \
+	echo "✓ Created ticket: $$TICKET" && \
+	echo "$$TICKET" > /tmp/test1-ticket.txt
+
+test-remediation-1: test-remediation-1-cleanup test-remediation-1-setup test-remediation-1-create-ticket 
+	@TICKET=$$(cat /tmp/test1-ticket.txt) && \
+	echo "" && \
+	echo "╔══════════════════════════════════════════════════════════════════╗" && \
+	echo "║  Running Test 1: Investigating $$TICKET" && \
+	echo "╚══════════════════════════════════════════════════════════════════╝" && \
+	echo "" && \
+	echo "Before state:" && \
+	kubectl --context $(KUBE_CONTEXT) get deployment order-service -n $(PROD_NAMESPACE) && \
+	echo "" && \
+	echo "Triggering investigation..." && \
+	#kubectl --context $(KUBE_CONTEXT) exec -n $(NAMESPACE) deployment/langgraph-agent -- \
+	#	curl -s -X POST http://localhost:8000/investigate \
+	#	-H "Content-Type: application/json" \
+	#	-d "{\"ticket_id\": \"$$TICKET\"}" && \
+	echo "" && \
+	echo "" && \
+	echo "Waiting 2m for investigation to complete..." && \
+	sleep 120 && \
+	echo "" && \
+	echo "Investigation logs:" && \
+	echo "─────────────────────────────────────────────────────────────────────" && \
+	kubectl --context $(KUBE_CONTEXT) logs -n $(NAMESPACE) -l app=langgraph-agent --tail=80 && \
+	echo "" && \
+	echo "─────────────────────────────────────────────────────────────────────" && \
+	echo "" && \
+	$(MAKE) test-remediation-1-verify && \
+	echo "" && \
+	echo "╔══════════════════════════════════════════════════════════════════╗" && \
+	echo "║  Keeping resources for 3 minutes for inspection...                ║" && \
+	echo "║  Press Ctrl+C to skip and keep resources indefinitely           ║" && \
+	echo "╚══════════════════════════════════════════════════════════════════╝" && \
+	sleep 180 && \
+	echo "" && \
+	$(MAKE) test-remediation-1-cleanup
+
+test-remediation-1-run:
+	@if [ -z "$(TICKET)" ]; then \
+		echo "ERROR: TICKET is required. Usage: make test-remediation-1-run TICKET=SP-1234"; \
+		exit 1; \
+	fi
+	@echo "" && \
+	echo "╔══════════════════════════════════════════════════════════════════╗" && \
+	echo "║  Running Test 1: Investigating $(TICKET)" && \
+	echo "╚══════════════════════════════════════════════════════════════════╝" && \
+	echo "" && \
+	echo "Before state:" && \
+	kubectl --context $(KUBE_CONTEXT) get deployment order-service -n $(PROD_NAMESPACE) && \
+	echo "" && \
+	echo "Triggering investigation..." && \
+	kubectl --context $(KUBE_CONTEXT) exec -n $(NAMESPACE) deployment/langgraph-agent -- \
+	curl -s -X POST http://localhost:8000/investigate \
+		-H "Content-Type: application/json" \
+	    -d "{\"ticket_id\": \"$$TICKET\"}" && \
+	echo "" && \
+	echo "" && \
+	echo "Watching logs (Ctrl+C to stop)..." && \
+	echo "─────────────────────────────────────────────────────────────────────" && \
+	kubectl --context $(KUBE_CONTEXT) logs -n $(NAMESPACE) -l app=langgraph-agent -f --tail=50
+
+test-remediation-1-verify:
+	@echo ""
+	@echo "╔══════════════════════════════════════════════════════════════════╗"
+	@echo "║  Verifying Test 1 Results                                       ║"
+	@echo "╚══════════════════════════════════════════════════════════════════╝"
+	@echo ""
+	@echo "Deployment status:"
+	@kubectl --context $(KUBE_CONTEXT) get deployment order-service -n $(PROD_NAMESPACE)
+	@echo ""
+	@echo "Pods:"
+	@kubectl --context $(KUBE_CONTEXT) get pods -n $(PROD_NAMESPACE) -l app=order-service
+	@echo ""
+	@echo "Service endpoints:"
+	@kubectl --context $(KUBE_CONTEXT) get endpoints order-service -n $(PROD_NAMESPACE)
+
+test-remediation-1-cleanup:
+	@echo "Cleaning up test 1 resources..."
+	@kubectl --context $(KUBE_CONTEXT) delete deployment order-service -n $(PROD_NAMESPACE) --ignore-not-found
+	@kubectl --context $(KUBE_CONTEXT) delete service order-service -n $(PROD_NAMESPACE) --ignore-not-found
+	@echo "✓ Cleanup complete"
+
+# Test 1 HITL: Same as Test 1 but with Human-in-the-Loop approval
+# Tests the HITL checkpoint before remediation
+# ----------------------------------------------------------------------------
+
+.PHONY: test-hitl-remediation-1-setup test-hitl-remediation-1-create-ticket test-hitl-remediation-1 test-hitl-remediation-1-verify test-hitl-remediation-1-cleanup
+
+test-hitl-remediation-1-setup: test-remediation-1-setup
+	@echo "✓ Using test-remediation-1 setup (same broken deployment)"
+
+test-hitl-remediation-1-create-ticket: test-remediation-1-create-ticket
+	@echo "✓ Using test-remediation-1 ticket creation"
+
+test-hitl-remediation-1: test-remediation-1-cleanup test-hitl-remediation-1-setup test-hitl-remediation-1-create-ticket
+	@TICKET=$$(cat /tmp/test1-ticket.txt) && \
+	echo "" && \
+	echo "╔══════════════════════════════════════════════════════════════════╗" && \
+	echo "║  HITL Test 1: Investigating $$TICKET (with human approval)       ║" && \
+	echo "╚══════════════════════════════════════════════════════════════════╝" && \
+	echo "" && \
+	echo "Before state:" && \
+	kubectl --context $(KUBE_CONTEXT) get deployment order-service -n $(PROD_NAMESPACE) && \
+	echo "" && \
+	echo "Waiting for Go poller to pick up ticket and start investigation..." && \
+	echo "(Go poller runs every 30s, may take up to 3 minutes)" && \
+	echo "" && \
+	STATUS="not_found" && \
+	for i in $$(seq 1 36); do \
+		RESPONSE=$$(kubectl --context $(KUBE_CONTEXT) exec -n $(NAMESPACE) deployment/langgraph-agent -- \
+			curl -s "http://localhost:8000/investigate/$$TICKET/pending" 2>/dev/null) && \
+		STATUS=$$(echo "$$RESPONSE" | jq -r '.status // "not_found"' 2>/dev/null || echo "not_found") && \
+		if [ "$$STATUS" = "pending_approval" ]; then \
+			break; \
+		elif [ "$$STATUS" = "completed" ]; then \
+			break; \
+		fi && \
+		printf "\r  Waiting for investigation to start... [%02d/36] (check every 5s)" "$$i" && \
+		sleep 5; \
+	done && \
+	echo "" && \
+	if [ "$$STATUS" = "pending_approval" ]; then \
+		CHECKPOINT=$$(echo "$$RESPONSE" | jq -r '.checkpoint') && \
+		echo "✓ Workflow paused at checkpoint: $$CHECKPOINT" && \
+		echo "" && \
+		echo "Fetching pending state for review..." && \
+		PENDING=$$(kubectl --context $(KUBE_CONTEXT) exec -n $(NAMESPACE) deployment/langgraph-agent -- \
+			curl -s http://localhost:8000/investigate/$$TICKET/pending) && \
+		echo "Pending state:" && \
+		echo "$$PENDING" | jq '.' && \
+		echo "" && \
+		echo "Root cause: $$(echo "$$PENDING" | jq -r '.state.root_cause')" && \
+		echo "Recommended action: $$(echo "$$PENDING" | jq -r '.state.recommended_action')" && \
+		echo "Confidence: $$(echo "$$PENDING" | jq -r '.state.confidence_level')" && \
+		echo "" && \
+		echo "─────────────────────────────────────────────────────────────────────" && \
+		echo "  Approving remediation..." && \
+		echo "─────────────────────────────────────────────────────────────────────" && \
+		APPROVE_RESPONSE=$$(kubectl --context $(KUBE_CONTEXT) exec -n $(NAMESPACE) deployment/langgraph-agent -- \
+			curl -s -X POST http://localhost:8000/investigate/$$TICKET/approve \
+			-H "Content-Type: application/json" \
+			-d "{\"checkpoint\": \"$$CHECKPOINT\"}") && \
+		echo "Approve response: $$APPROVE_RESPONSE" && \
+		FINAL_STATUS=$$(echo "$$APPROVE_RESPONSE" | jq -r '.status') && \
+		echo "" && \
+		if [ "$$FINAL_STATUS" = "completed" ]; then \
+			echo "✓ Workflow completed after approval"; \
+		elif [ "$$FINAL_STATUS" = "pending_approval" ]; then \
+			echo "⚠ Workflow paused at another checkpoint: $$(echo "$$APPROVE_RESPONSE" | jq -r '.checkpoint')"; \
+		else \
+			echo "⚠ Unexpected status: $$FINAL_STATUS"; \
+		fi; \
+	elif [ "$$STATUS" = "completed" ]; then \
+		echo "⚠ Workflow completed without HITL pause - is HITL_ENABLED=true?"; \
+	else \
+		echo "⚠ Unexpected status: $$STATUS"; \
+	fi && \
+	echo "" && \
+	echo "Investigation logs:" && \
+	echo "─────────────────────────────────────────────────────────────────────" && \
+	kubectl --context $(KUBE_CONTEXT) logs -n $(NAMESPACE) -l app=langgraph-agent --tail=80 && \
+	echo "" && \
+	echo "─────────────────────────────────────────────────────────────────────" && \
+	echo "" && \
+	$(MAKE) test-remediation-1-verify && \
+	echo "" && \
+	echo "╔══════════════════════════════════════════════════════════════════╗" && \
+	echo "║  Keeping resources for 3 minutes for inspection...                ║" && \
+	echo "║  Press Ctrl+C to skip and keep resources indefinitely           ║" && \
+	echo "╚══════════════════════════════════════════════════════════════════╝" && \
+	sleep 180 && \
+	echo "" && \
+	$(MAKE) test-remediation-1-cleanup
+
+test-hitl-remediation-1-verify: test-remediation-1-verify
+	@echo "✓ Using test-remediation-1 verification"
+
+test-hitl-remediation-1-cleanup: test-remediation-1-cleanup
+	@echo "✓ Using test-remediation-1 cleanup"
+
+# Jira Comment HITL test - tests real-world Jira comment approval flow
+# Uses the Go HITL watcher to detect approve/reject comments in Jira
+# ----------------------------------------------------------------------------
+
+.PHONY: test-hitl-remediation-1-jira-comment
+
+test-hitl-remediation-1-jira-comment: test-remediation-1-cleanup test-hitl-remediation-1-setup test-hitl-remediation-1-create-ticket
+	@TICKET=$$(cat /tmp/test1-ticket.txt) && \
+	JIRA_SERVER=$$(kubectl --context $(KUBE_CONTEXT) get secret jira-k8s-agent-secret -n $(NAMESPACE) -o jsonpath='{.data.jira-url}' | base64 -d) && \
+	echo "" && \
+	echo "╔══════════════════════════════════════════════════════════════════╗" && \
+	echo "║  HITL Jira Comment Test: Investigating $$TICKET                  ║" && \
+	echo "╚══════════════════════════════════════════════════════════════════╝" && \
+	echo "" && \
+	echo "Before state:" && \
+	kubectl --context $(KUBE_CONTEXT) get deployment order-service -n $(PROD_NAMESPACE) && \
+	echo "" && \
+	echo "Waiting for Go poller to pick up ticket and start investigation..." && \
+	echo "(Go poller runs every 30s, may take up to 3 minutes)" && \
+	echo "" && \
+	STATUS="not_found" && \
+	for i in $$(seq 1 60); do \
+		RESPONSE=$$(kubectl --context $(KUBE_CONTEXT) exec -n $(NAMESPACE) deployment/langgraph-agent -- \
+			curl -s "http://localhost:8000/investigate/$$TICKET/pending" 2>/dev/null) && \
+		STATUS=$$(echo "$$RESPONSE" | jq -r '.status // "not_found"' 2>/dev/null || echo "not_found") && \
+		if [ "$$STATUS" = "pending_approval" ]; then \
+			break; \
+		elif [ "$$STATUS" = "completed" ]; then \
+			break; \
+		fi && \
+		printf "\r  Waiting for HITL checkpoint... [%02d/60] status: $$STATUS" "$$i" && \
+		sleep 5; \
+	done && \
+	echo "" && \
+	if [ "$$STATUS" = "pending_approval" ]; then \
+		echo "╔══════════════════════════════════════════════════════════════════╗" && \
+		echo "║  WAITING FOR JIRA COMMENT APPROVAL                               ║" && \
+		echo "╠══════════════════════════════════════════════════════════════════╣" && \
+		echo "║                                                                  ║" && \
+		echo "║  1. Open this Jira ticket in your browser:                       ║" && \
+		echo "║     $$JIRA_SERVER/browse/$$TICKET" && \
+		echo "║                                                                  ║" && \
+		echo "║  2. Review the approval request comment posted by the agent      ║" && \
+		echo "║                                                                  ║" && \
+		echo "║  3. Add a NEW comment with one of:                               ║" && \
+		echo "║     - To approve:  approve                                       ║" && \
+		echo "║     - To reject:   reject: <your reason>                         ║" && \
+		echo "║                                                                  ║" && \
+		echo "╚══════════════════════════════════════════════════════════════════╝" && \
+		echo "" && \
+		echo "Polling for Jira comment response (timeout: 10 minutes)..." && \
+		echo "" && \
+		FINAL_STATUS="pending_approval" && \
+		for i in $$(seq 1 60); do \
+			POLL_STATUS=$$(kubectl --context $(KUBE_CONTEXT) exec -n $(NAMESPACE) deployment/langgraph-agent -- \
+				curl -s "http://localhost:8000/investigate/$$TICKET/pending" 2>/dev/null | jq -r '.status // "unknown"' 2>/dev/null || echo "unknown") && \
+			if [ "$$POLL_STATUS" = "completed" ]; then \
+				echo "" && \
+				echo "✓ Workflow completed! The Go HITL watcher detected your Jira comment." && \
+				FINAL_STATUS="completed" && \
+				break; \
+			elif [ "$$POLL_STATUS" = "rejected" ]; then \
+				echo "" && \
+				echo "✗ Workflow rejected via Jira comment." && \
+				FINAL_STATUS="rejected" && \
+				break; \
+			fi && \
+			printf "\r  Waiting for Jira comment... [%02d/60] (check every 10s)" "$$i" && \
+			sleep 10; \
+		done && \
+		echo "" && \
+		if [ "$$FINAL_STATUS" = "pending_approval" ]; then \
+			echo "" && \
+			echo "⚠ Timeout waiting for Jira comment. Workflow still paused." && \
+			echo "  You can still add a comment in Jira - the Go watcher will pick it up." && \
+			echo "" && \
+			echo "  Or approve via API:" && \
+			echo "  kubectl exec -n $(NAMESPACE) deployment/langgraph-agent -- \\" && \
+			echo "    curl -X POST http://localhost:8000/investigate/$$TICKET/approve"; \
+		fi; \
+	elif [ "$$STATUS" = "completed" ]; then \
+		echo "⚠ Workflow completed without HITL pause - is HITL_ENABLED=true?"; \
+	elif [ "$$STATUS" = "running" ]; then \
+		echo "⚠ Timeout: Investigation still running. LLM calls may take longer than expected." && \
+		echo "  Continue waiting manually or check: kubectl exec -n $(NAMESPACE) deployment/langgraph-agent -- curl -s http://localhost:8000/investigate/$$TICKET/pending | jq .status"; \
+	else \
+		echo "⚠ Unexpected status: $$STATUS"; \
+	fi && \
+	echo "" && \
+	$(MAKE) test-remediation-1-verify
+
+# Test 2: Missing ConfigMap with historical knowledge
+# Agent should find values from prior resolved ticket and create ConfigMap
+# ----------------------------------------------------------------------------
+
+.PHONY: test-remediation-2-create-prior-ticket test-remediation-2-deploy test-remediation-2-create-new-ticket test-remediation-2-run test-remediation-2 test-remediation-2-verify test-remediation-2-cleanup
+
+test-remediation-2-create-prior-ticket:
+	@echo "╔══════════════════════════════════════════════════════════════════╗"
+	@echo "║  TEST 2 Step 1: Creating prior resolved ticket with solution    ║"
+	@echo "╚══════════════════════════════════════════════════════════════════╝"
+	@echo ""
+	@echo "Creating prior ticket..."
+	@JIRA_SERVER=$$(kubectl --context $(KUBE_CONTEXT) get secret jira-k8s-agent-secret -n $(NAMESPACE) -o jsonpath='{.data.jira-url}' | base64 -d) && \
+	JIRA_EMAIL=$$(kubectl --context $(KUBE_CONTEXT) get secret jira-k8s-agent-secret -n $(NAMESPACE) -o jsonpath='{.data.jira-email}' | base64 -d) && \
+	JIRA_TOKEN=$$(kubectl --context $(KUBE_CONTEXT) get secret jira-k8s-agent-secret -n $(NAMESPACE) -o jsonpath='{.data.jira-api-token}' | base64 -d) && \
+	PRIOR_TICKET=$$(curl -s -k -X POST "$$JIRA_SERVER/rest/api/2/issue" \
+		-H "Content-Type: application/json" \
+		-u "$$JIRA_EMAIL:$$JIRA_TOKEN" \
+		-d '{"fields": {"project": {"key": "$(JIRA_PROJECT)"}, "summary": "payment-service pods failing in production - CreateContainerConfigError", "description": "The payment-service deployment pods in the production namespace are failing with CreateContainerConfigError. The pods cannot start because they reference a ConfigMap named payment-config that does not exist in the production namespace.", "issuetype": {"name": "$(JIRA_ISSUE_TYPE)"}, "components": [{"name": "$(JIRA_COMPONENT)"}], "labels": ["ai-agent-investigated"], "assignee": {"name": "anoah"}, "customfield_24301": [{"name": "Unknown"}], "customfield_20821": {"value": "No"}}}' | jq -r '.key') && \
+	echo "✓ Created prior ticket: $$PRIOR_TICKET (with ai-agent-investigated label to prevent re-investigation)" && \
+	echo "" && \
+	echo "Adding resolution comment..." && \
+	curl -s -k -X POST "$$JIRA_SERVER/rest/api/2/issue/$$PRIOR_TICKET/comment" \
+		-H "Content-Type: application/json" \
+		-u "$$JIRA_EMAIL:$$JIRA_TOKEN" \
+		-d '{"body": "Fixed by creating the payment-config ConfigMap with these values:\n\nkubectl create configmap payment-config -n production --from-literal=DATABASE_URL=postgres://payments-db.production:5432/payments --from-literal=REDIS_HOST=redis.production:6379\n\nThe pods recovered after the ConfigMap was created."}' > /dev/null && \
+	echo "✓ Added resolution comment" && \
+	echo "" && \
+	echo "Resolving ticket..." && \
+	TRANSITION_ID=$$(curl -s -k "$$JIRA_SERVER/rest/api/2/issue/$$PRIOR_TICKET/transitions" \
+		-u "$$JIRA_EMAIL:$$JIRA_TOKEN" | jq -r '.transitions[] | select(.name | test("Done|Resolve|Close"; "i")) | .id' | head -1) && \
+	if [ -n "$$TRANSITION_ID" ]; then \
+		curl -s -k -X POST "$$JIRA_SERVER/rest/api/2/issue/$$PRIOR_TICKET/transitions" \
+			-H "Content-Type: application/json" \
+			-u "$$JIRA_EMAIL:$$JIRA_TOKEN" \
+			-d "{\"transition\": {\"id\": \"$$TRANSITION_ID\"}, \"fields\": {\"resolution\": {\"name\": \"Done\"}}}" > /dev/null && \
+		echo "✓ Ticket resolved: $$PRIOR_TICKET"; \
+	else \
+		echo "⚠ Could not auto-resolve ticket. Please resolve $$PRIOR_TICKET manually in Jira."; \
+	fi && \
+	echo "Waiting 10s for Jira indexing..." && \
+	sleep 10 && \
+	echo "$$PRIOR_TICKET" > /tmp/test2-prior-ticket.txt
+
+test-remediation-2-deploy:
+	@echo "╔══════════════════════════════════════════════════════════════════╗"
+	@echo "║  TEST 2 Step 2: Deploying payment-service (missing ConfigMap)   ║"
+	@echo "╚══════════════════════════════════════════════════════════════════╝"
+	@echo ""
+	@kubectl --context $(KUBE_CONTEXT) delete configmap payment-config -n $(PROD_NAMESPACE) --ignore-not-found
+	@kubectl --context $(KUBE_CONTEXT) delete deployment payment-service -n $(PROD_NAMESPACE) --ignore-not-found
+	@sleep 2
+	@kubectl --context $(KUBE_CONTEXT) apply -f ../tests/fixtures/k8s-manifests/payment-service.yaml
+	@echo ""
+	@sleep 5
+	@echo "Pod status (should show CreateContainerConfigError):"
+	@kubectl --context $(KUBE_CONTEXT) get pods -n $(PROD_NAMESPACE) -l app=payment-service
+
+test-remediation-2-create-new-ticket:
+	@echo "Creating NEW ticket for current issue..."
+	@JIRA_SERVER=$$(kubectl --context $(KUBE_CONTEXT) get secret jira-k8s-agent-secret -n $(NAMESPACE) -o jsonpath='{.data.jira-url}' | base64 -d) && \
+	JIRA_EMAIL=$$(kubectl --context $(KUBE_CONTEXT) get secret jira-k8s-agent-secret -n $(NAMESPACE) -o jsonpath='{.data.jira-email}' | base64 -d) && \
+	JIRA_TOKEN=$$(kubectl --context $(KUBE_CONTEXT) get secret jira-k8s-agent-secret -n $(NAMESPACE) -o jsonpath='{.data.jira-api-token}' | base64 -d) && \
+	TICKET=$$(curl -s -k -X POST "$$JIRA_SERVER/rest/api/2/issue" \
+		-H "Content-Type: application/json" \
+		-u "$$JIRA_EMAIL:$$JIRA_TOKEN" \
+		-d '{"fields": {"project": {"key": "$(JIRA_PROJECT)"}, "summary": "payment-service pods failing in production - CreateContainerConfigError", "description": "The payment-service deployment pods in the production namespace are failing to start with CreateContainerConfigError. Please investigate and fix.", "issuetype": {"name": "$(JIRA_ISSUE_TYPE)"}, "components": [{"name": "$(JIRA_COMPONENT)"}], \"labels\": [\"ai-investigate\"], "assignee": {"name": "anoah"}, "customfield_24301": [{"name": "Unknown"}], "customfield_20821": {"value": "No"}}}' | jq -r '.key') && \
+	echo "✓ Created ticket: $$TICKET" && \
+	echo "$$TICKET" > /tmp/test2-ticket.txt
+
+test-remediation-2: test-remediation-2-cleanup test-remediation-2-create-prior-ticket test-remediation-2-deploy test-remediation-2-create-new-ticket test-remediation-2-cleanup 
+	@TICKET=$$(cat /tmp/test2-ticket.txt) && \
+	PRIOR=$$(cat /tmp/test2-prior-ticket.txt 2>/dev/null || echo "unknown") && \
+	echo "" && \
+	echo "╔══════════════════════════════════════════════════════════════════╗" && \
+	echo "║  Running Test 2: Investigating $$TICKET" && \
+	echo "║  (Should find solution from prior ticket $$PRIOR)" && \
+	echo "╚══════════════════════════════════════════════════════════════════╝" && \
+	echo "" && \
+	echo "Before state:" && \
+	kubectl --context $(KUBE_CONTEXT) get pods -n $(PROD_NAMESPACE) -l app=payment-service && \
+	kubectl --context $(KUBE_CONTEXT) get configmap payment-config -n $(PROD_NAMESPACE) 2>/dev/null || echo "ConfigMap payment-config: NOT FOUND" && \
+	echo "" && \
+	echo "Triggering investigation..." && \
+	echo "" && \
+	echo "" && \
+	echo "Waiting 2m for investigation to complete (includes history search)..." && \
+	sleep 120 && \
+	echo "" && \
+	echo "Investigation logs:" && \
+	echo "─────────────────────────────────────────────────────────────────────" && \
+	kubectl --context $(KUBE_CONTEXT) logs -n $(NAMESPACE) -l app=langgraph-agent --tail=100 && \
+	echo "" && \
+	echo "─────────────────────────────────────────────────────────────────────" && \
+	$(MAKE) test-remediation-2-verify && \
+	echo "" && \
+	echo "╔══════════════════════════════════════════════════════════════════╗" && \
+	echo "║  Keeping resources for 3 minutes for inspection...                ║" && \
+	echo "║  Press Ctrl+C to skip and keep resources indefinitely           ║" && \
+	echo "╚══════════════════════════════════════════════════════════════════╝" && \
+	sleep 180 && \
+	echo "" && \
+	$(MAKE) test-remediation-2-cleanup
+
+test-remediation-2-run:
+	@if [ -z "$(TICKET)" ]; then \
+		echo "ERROR: TICKET is required. Usage: make test-remediation-2-run TICKET=SP-1234"; \
+		exit 1; \
+	fi
+	@echo "" && \
+	echo "╔══════════════════════════════════════════════════════════════════╗" && \
+	echo "║  Running Test 2: Investigating $(TICKET) (with history lookup)" && \
+	echo "╚══════════════════════════════════════════════════════════════════╝" && \
+	echo "" && \
+	echo "Before state:" && \
+	kubectl --context $(KUBE_CONTEXT) get pods -n $(PROD_NAMESPACE) -l app=payment-service && \
+	kubectl --context $(KUBE_CONTEXT) get configmap payment-config -n $(PROD_NAMESPACE) 2>/dev/null || echo "ConfigMap payment-config: NOT FOUND" && \
+	echo "" && \
+	echo "Triggering investigation..." && \
+	kubectl --context $(KUBE_CONTEXT) exec -n $(NAMESPACE) deployment/langgraph-agent -- \
+		curl -s -X POST http://localhost:8000/investigate \
+		-H "Content-Type: application/json" \
+		-d '{"ticket_id": "$(TICKET)"}' && \
+	echo "" && \
+	echo "" && \
+	echo "Watching logs (Ctrl+C to stop)..." && \
+	echo "─────────────────────────────────────────────────────────────────────" && \
+	kubectl --context $(KUBE_CONTEXT) logs -n $(NAMESPACE) -l app=langgraph-agent -f --tail=50
+
+test-remediation-2-verify:
+	@echo ""
+	@echo "╔══════════════════════════════════════════════════════════════════╗"
+	@echo "║  Verifying Test 2 Results                                       ║"
+	@echo "╚══════════════════════════════════════════════════════════════════╝"
+	@echo ""
+	@echo "ConfigMap status:"
+	@kubectl --context $(KUBE_CONTEXT) get configmap payment-config -n $(PROD_NAMESPACE) -o yaml 2>/dev/null || echo "ConfigMap payment-config: NOT FOUND"
+	@echo ""
+	@echo "Pod status:"
+	@kubectl --context $(KUBE_CONTEXT) get pods -n $(PROD_NAMESPACE) -l app=payment-service
+
+test-remediation-2-cleanup:
+	@echo "Cleaning up test 2 resources..."
+	@kubectl --context $(KUBE_CONTEXT) delete deployment payment-service -n $(PROD_NAMESPACE) --ignore-not-found
+	@kubectl --context $(KUBE_CONTEXT) delete configmap payment-config -n $(PROD_NAMESPACE) --ignore-not-found
+	@echo "✓ Cleanup complete"
+
+# Jira Comment HITL test 2 - tests real-world Jira comment approval flow for ConfigMap remediation
+# Uses the Go HITL watcher to detect approve/reject comments in Jira
+# ----------------------------------------------------------------------------
+
+.PHONY: test-hitl-remediation-2-jira-comment
+
+# Test Concurrent Dispatch: 2 tickets dispatched simultaneously
+# Tests that the poller can handle multiple tickets in parallel
+# ----------------------------------------------------------------------------
+
+.PHONY: test-concurrent-dispatch-setup test-concurrent-dispatch-create-tickets test-concurrent-dispatch test-concurrent-dispatch-verify test-concurrent-dispatch-cleanup
+
+test-concurrent-dispatch-cleanup:
+	@echo "Cleaning up concurrent dispatch test resources..."
+	@kubectl --context $(KUBE_CONTEXT) delete deployment order-service -n $(PROD_NAMESPACE) --ignore-not-found
+	@kubectl --context $(KUBE_CONTEXT) delete service order-service -n $(PROD_NAMESPACE) --ignore-not-found
+	@kubectl --context $(KUBE_CONTEXT) delete deployment inventory-service -n $(PROD_NAMESPACE) --ignore-not-found
+	@kubectl --context $(KUBE_CONTEXT) delete service inventory-service -n $(PROD_NAMESPACE) --ignore-not-found
+	@rm -f /tmp/concurrent-ticket1.txt /tmp/concurrent-ticket2.txt 2>/dev/null || true
+	@echo "✓ Cleanup complete"
+
+test-concurrent-dispatch-setup:
+	@echo "╔══════════════════════════════════════════════════════════════════╗"
+	@echo "║  CONCURRENT DISPATCH TEST: 2 deployments with 0 replicas        ║"
+	@echo "╚══════════════════════════════════════════════════════════════════╝"
+	@echo ""
+	@echo "Setting up order-service deployment with 0 replicas..."
+	@kubectl --context $(KUBE_CONTEXT) apply -f ../tests/fixtures/k8s-manifests/order-service.yaml
+	@echo ""
+	@echo "Setting up inventory-service deployment with 0 replicas..."
+	@kubectl --context $(KUBE_CONTEXT) apply -f ../tests/fixtures/k8s-manifests/inventory-service.yaml
+	@echo ""
+	@echo "✓ Both deployments created with 0 replicas"
+	@kubectl --context $(KUBE_CONTEXT) get deployment order-service inventory-service -n $(PROD_NAMESPACE)
+
+test-concurrent-dispatch-create-tickets:
+	@echo ""
+	@echo "Creating 2 Jira tickets simultaneously..."
+	@JIRA_SERVER=$$(kubectl --context $(KUBE_CONTEXT) get secret jira-k8s-agent-secret -n $(NAMESPACE) -o jsonpath='{.data.jira-url}' | base64 -d) && \
+	JIRA_EMAIL=$$(kubectl --context $(KUBE_CONTEXT) get secret jira-k8s-agent-secret -n $(NAMESPACE) -o jsonpath='{.data.jira-email}' | base64 -d) && \
+	JIRA_TOKEN=$$(kubectl --context $(KUBE_CONTEXT) get secret jira-k8s-agent-secret -n $(NAMESPACE) -o jsonpath='{.data.jira-api-token}' | base64 -d) && \
+	TICKET1=$$(curl -s -k -X POST "$$JIRA_SERVER/rest/api/2/issue" \
+		-H "Content-Type: application/json" \
+		-u "$$JIRA_EMAIL:$$JIRA_TOKEN" \
+		-d '{"fields": {"project": {"key": "$(JIRA_PROJECT)"}, "summary": "order-service is down in production - no pods running", "description": "The order-service deployment in production namespace has no running pods. Service is completely unavailable. Please investigate and restore service.", "issuetype": {"name": "$(JIRA_ISSUE_TYPE)"}, "components": [{"name": "$(JIRA_COMPONENT)"}], "labels": ["ai-investigate"], "assignee": {"name": "anoah"}, "customfield_24301": [{"name": "Unknown"}], "customfield_20821": {"value": "No"}}}' | jq -r '.key') && \
+	TICKET2=$$(curl -s -k -X POST "$$JIRA_SERVER/rest/api/2/issue" \
+		-H "Content-Type: application/json" \
+		-u "$$JIRA_EMAIL:$$JIRA_TOKEN" \
+		-d '{"fields": {"project": {"key": "$(JIRA_PROJECT)"}, "summary": "inventory-service is down in production - no pods running", "description": "The inventory-service deployment in production namespace has no running pods. Service is completely unavailable. Please investigate and restore service.", "issuetype": {"name": "$(JIRA_ISSUE_TYPE)"}, "components": [{"name": "$(JIRA_COMPONENT)"}], "labels": ["ai-investigate"], "assignee": {"name": "anoah"}, "customfield_24301": [{"name": "Unknown"}], "customfield_20821": {"value": "No"}}}' | jq -r '.key') && \
+	echo "✓ Created ticket 1: $$TICKET1 (order-service)" && \
+	echo "✓ Created ticket 2: $$TICKET2 (inventory-service)" && \
+	echo "$$TICKET1" > /tmp/concurrent-ticket1.txt && \
+	echo "$$TICKET2" > /tmp/concurrent-ticket2.txt
+
+test-concurrent-dispatch: test-concurrent-dispatch-cleanup test-concurrent-dispatch-setup test-concurrent-dispatch-create-tickets
+	@TICKET1=$$(cat /tmp/concurrent-ticket1.txt) && \
+	TICKET2=$$(cat /tmp/concurrent-ticket2.txt) && \
+	JIRA_SERVER=$$(kubectl --context $(KUBE_CONTEXT) get secret jira-k8s-agent-secret -n $(NAMESPACE) -o jsonpath='{.data.jira-url}' | base64 -d) && \
+	echo "" && \
+	echo "╔══════════════════════════════════════════════════════════════════╗" && \
+	echo "║  CONCURRENT DISPATCH TEST                                        ║" && \
+	echo "║  Ticket 1: $$TICKET1 (order-service)                             " && \
+	echo "║  Ticket 2: $$TICKET2 (inventory-service)                         " && \
+	echo "╚══════════════════════════════════════════════════════════════════╝" && \
+	echo "" && \
+	echo "Before state:" && \
+	kubectl --context $(KUBE_CONTEXT) get deployment order-service inventory-service -n $(PROD_NAMESPACE) && \
+	echo "" && \
+	echo "Waiting for Go poller to pick up BOTH tickets and dispatch concurrently..." && \
+	echo "(Go poller runs every 60s, should dispatch both tickets together)" && \
+	echo "" && \
+	echo "Monitoring jira-agent logs for concurrent dispatch..." && \
+	echo "─────────────────────────────────────────────────────────────────────" && \
+	FOUND_CONCURRENT=0 && \
+	for i in $$(seq 1 24); do \
+		LOGS=$$(kubectl --context $(KUBE_CONTEXT) logs -l app=jira-agent -n $(NAMESPACE) --tail=20 2>/dev/null) && \
+		if echo "$$LOGS" | grep -q "dispatching tickets concurrently.*count.:2"; then \
+			echo "" && \
+			echo "✓ CONCURRENT DISPATCH DETECTED: 2 tickets dispatched together!" && \
+			echo "$$LOGS" | grep -E "(dispatching tickets concurrently|dispatching ticket)" && \
+			FOUND_CONCURRENT=1 && \
+			break; \
+		fi && \
+		DISPATCH1=$$(echo "$$LOGS" | grep "dispatching ticket.*$$TICKET1" || true) && \
+		DISPATCH2=$$(echo "$$LOGS" | grep "dispatching ticket.*$$TICKET2" || true) && \
+		if [ -n "$$DISPATCH1" ] && [ -n "$$DISPATCH2" ]; then \
+			echo "" && \
+			echo "✓ Both tickets have been dispatched!" && \
+			echo "$$DISPATCH1" && \
+			echo "$$DISPATCH2" && \
+			FOUND_CONCURRENT=1 && \
+			break; \
+		fi && \
+		printf "\r  Waiting for concurrent dispatch... [%02d/24] (check every 5s)" "$$i" && \
+		sleep 5; \
+	done && \
+	echo "" && \
+	echo "─────────────────────────────────────────────────────────────────────" && \
+	echo "" && \
+	if [ "$$FOUND_CONCURRENT" = "0" ]; then \
+		echo "⚠ Timeout waiting for concurrent dispatch. Checking current state..." && \
+		kubectl --context $(KUBE_CONTEXT) logs -l app=jira-agent -n $(NAMESPACE) --tail=30 | grep -E "(dispatching|$$TICKET1|$$TICKET2)" || true; \
+	fi && \
+	echo "" && \
+	echo "Waiting 2 minutes for investigations to complete..." && \
+	sleep 120 && \
+	echo "" && \
+	echo "╔══════════════════════════════════════════════════════════════════╗" && \
+	echo "║  Checking if HITL approval is needed...                          ║" && \
+	echo "╚══════════════════════════════════════════════════════════════════╝" && \
+	echo "" && \
+	STATUS1=$$(kubectl --context $(KUBE_CONTEXT) exec -n $(NAMESPACE) deployment/langgraph-agent -- \
+		curl -s "http://localhost:8000/investigate/$$TICKET1/pending" 2>/dev/null | jq -r '.status // "not_found"' 2>/dev/null || echo "not_found") && \
+	STATUS2=$$(kubectl --context $(KUBE_CONTEXT) exec -n $(NAMESPACE) deployment/langgraph-agent -- \
+		curl -s "http://localhost:8000/investigate/$$TICKET2/pending" 2>/dev/null | jq -r '.status // "not_found"' 2>/dev/null || echo "not_found") && \
+	echo "Ticket 1 ($$TICKET1) status: $$STATUS1" && \
+	echo "Ticket 2 ($$TICKET2) status: $$STATUS2" && \
+	echo "" && \
+	if [ "$$STATUS1" = "pending_approval" ] || [ "$$STATUS2" = "pending_approval" ]; then \
+		echo "╔══════════════════════════════════════════════════════════════════╗" && \
+		echo "║  HITL APPROVAL NEEDED                                            ║" && \
+		echo "╠══════════════════════════════════════════════════════════════════╣" && \
+		echo "║  Add 'approve' comment to the pending tickets in Jira:           ║" && \
+		if [ "$$STATUS1" = "pending_approval" ]; then \
+			echo "║  - $$JIRA_SERVER/browse/$$TICKET1" ; \
+		fi && \
+		if [ "$$STATUS2" = "pending_approval" ]; then \
+			echo "║  - $$JIRA_SERVER/browse/$$TICKET2" ; \
+		fi && \
+		echo "╚══════════════════════════════════════════════════════════════════╝" && \
+		echo "" && \
+		echo "Waiting for Jira comment approvals (timeout: 5 minutes)..." && \
+		for i in $$(seq 1 30); do \
+			S1=$$(kubectl --context $(KUBE_CONTEXT) exec -n $(NAMESPACE) deployment/langgraph-agent -- \
+				curl -s "http://localhost:8000/investigate/$$TICKET1/pending" 2>/dev/null | jq -r '.status // "unknown"' 2>/dev/null || echo "unknown") && \
+			S2=$$(kubectl --context $(KUBE_CONTEXT) exec -n $(NAMESPACE) deployment/langgraph-agent -- \
+				curl -s "http://localhost:8000/investigate/$$TICKET2/pending" 2>/dev/null | jq -r '.status // "unknown"' 2>/dev/null || echo "unknown") && \
+			if [ "$$S1" != "pending_approval" ] && [ "$$S2" != "pending_approval" ]; then \
+				echo "" && \
+				echo "✓ Both workflows completed!" && \
+				break; \
+			fi && \
+			printf "\r  Waiting for approvals... [%02d/30] T1:$$S1 T2:$$S2" "$$i" && \
+			sleep 10; \
+		done; \
+	fi && \
+	echo "" && \
+	$(MAKE) test-concurrent-dispatch-verify
+
+test-concurrent-dispatch-verify:
+	@TICKET1=$$(cat /tmp/concurrent-ticket1.txt 2>/dev/null || echo "unknown") && \
+	TICKET2=$$(cat /tmp/concurrent-ticket2.txt 2>/dev/null || echo "unknown") && \
+	echo "" && \
+	echo "╔══════════════════════════════════════════════════════════════════╗" && \
+	echo "║  CONCURRENT DISPATCH TEST RESULTS                                ║" && \
+	echo "╚══════════════════════════════════════════════════════════════════╝" && \
+	echo "" && \
+	echo "Ticket 1: $$TICKET1 (order-service)" && \
+	echo "Ticket 2: $$TICKET2 (inventory-service)" && \
+	echo "" && \
+	echo "Deployment status:" && \
+	kubectl --context $(KUBE_CONTEXT) get deployment order-service inventory-service -n $(PROD_NAMESPACE) && \
+	echo "" && \
+	echo "Pods:" && \
+	kubectl --context $(KUBE_CONTEXT) get pods -n $(PROD_NAMESPACE) -l 'app in (order-service, inventory-service)' && \
+	echo "" && \
+	ORDER_READY=$$(kubectl --context $(KUBE_CONTEXT) get deployment order-service -n $(PROD_NAMESPACE) -o jsonpath='{.status.readyReplicas}' 2>/dev/null || echo "0") && \
+	INVENTORY_READY=$$(kubectl --context $(KUBE_CONTEXT) get deployment inventory-service -n $(PROD_NAMESPACE) -o jsonpath='{.status.readyReplicas}' 2>/dev/null || echo "0") && \
+	echo "─────────────────────────────────────────────────────────────────────" && \
+	if [ "$$ORDER_READY" = "1" ] && [ "$$INVENTORY_READY" = "1" ]; then \
+		echo "✓ SUCCESS: Both deployments remediated!" && \
+		echo "  - order-service: $$ORDER_READY/1 ready" && \
+		echo "  - inventory-service: $$INVENTORY_READY/1 ready"; \
+	elif [ "$$ORDER_READY" = "1" ]; then \
+		echo "⚠ PARTIAL: order-service remediated, inventory-service pending" && \
+		echo "  - order-service: $$ORDER_READY/1 ready" && \
+		echo "  - inventory-service: $$INVENTORY_READY/1 ready"; \
+	elif [ "$$INVENTORY_READY" = "1" ]; then \
+		echo "⚠ PARTIAL: inventory-service remediated, order-service pending" && \
+		echo "  - order-service: $$ORDER_READY/1 ready" && \
+		echo "  - inventory-service: $$INVENTORY_READY/1 ready"; \
+	else \
+		echo "✗ FAILED: Neither deployment remediated yet" && \
+		echo "  - order-service: $$ORDER_READY/1 ready" && \
+		echo "  - inventory-service: $$INVENTORY_READY/1 ready"; \
+	fi && \
+	echo "─────────────────────────────────────────────────────────────────────" && \
+	echo "" && \
+	echo "Jira-agent dispatch logs:" && \
+	kubectl --context $(KUBE_CONTEXT) logs -l app=jira-agent -n $(NAMESPACE) --tail=50 | grep -E "(dispatching tickets concurrently|dispatching ticket|$$TICKET1|$$TICKET2)" || true
+
+test-hitl-remediation-2-jira-comment: test-remediation-2-cleanup test-remediation-2-create-prior-ticket test-remediation-2-deploy test-remediation-2-create-new-ticket
+	@TICKET=$$(cat /tmp/test2-ticket.txt) && \
+	PRIOR=$$(cat /tmp/test2-prior-ticket.txt 2>/dev/null || echo "unknown") && \
+	JIRA_SERVER=$$(kubectl --context $(KUBE_CONTEXT) get secret jira-k8s-agent-secret -n $(NAMESPACE) -o jsonpath='{.data.jira-url}' | base64 -d) && \
+	echo "" && \
+	echo "╔══════════════════════════════════════════════════════════════════╗" && \
+	echo "║  HITL Jira Comment Test 2: Investigating $$TICKET                ║" && \
+	echo "║  (Should find solution from prior ticket $$PRIOR)                ║" && \
+	echo "╚══════════════════════════════════════════════════════════════════╝" && \
+	echo "" && \
+	echo "Before state:" && \
+	kubectl --context $(KUBE_CONTEXT) get pods -n $(PROD_NAMESPACE) -l app=payment-service && \
+	kubectl --context $(KUBE_CONTEXT) get configmap payment-config -n $(PROD_NAMESPACE) 2>/dev/null || echo "ConfigMap payment-config: NOT FOUND" && \
+	echo "" && \
+	echo "Waiting for Go poller to pick up ticket and start investigation..." && \
+	echo "(Go poller runs every 30s, may take up to 3 minutes)" && \
+	echo "" && \
+	STATUS="not_found" && \
+	for i in $$(seq 1 60); do \
+		RESPONSE=$$(kubectl --context $(KUBE_CONTEXT) exec -n $(NAMESPACE) deployment/langgraph-agent -- \
+			curl -s "http://localhost:8000/investigate/$$TICKET/pending" 2>/dev/null) && \
+		STATUS=$$(echo "$$RESPONSE" | jq -r '.status // "not_found"' 2>/dev/null || echo "not_found") && \
+		if [ "$$STATUS" = "pending_approval" ]; then \
+			break; \
+		elif [ "$$STATUS" = "completed" ]; then \
+			break; \
+		fi && \
+		printf "\r  Waiting for HITL checkpoint... [%02d/60] status: $$STATUS" "$$i" && \
+		sleep 5; \
+	done && \
+	echo "" && \
+	if [ "$$STATUS" = "pending_approval" ]; then \
+		echo "╔══════════════════════════════════════════════════════════════════╗" && \
+		echo "║  WAITING FOR JIRA COMMENT APPROVAL                               ║" && \
+		echo "╠══════════════════════════════════════════════════════════════════╣" && \
+		echo "║                                                                  ║" && \
+		echo "║  1. Open this Jira ticket in your browser:                       ║" && \
+		echo "║     $$JIRA_SERVER/browse/$$TICKET" && \
+		echo "║                                                                  ║" && \
+		echo "║  2. Review the approval request comment posted by the agent      ║" && \
+		echo "║                                                                  ║" && \
+		echo "║  3. Add a NEW comment with one of:                               ║" && \
+		echo "║     - To approve:  approve                                       ║" && \
+		echo "║     - To reject:   reject: <your reason>                         ║" && \
+		echo "║                                                                  ║" && \
+		echo "╚══════════════════════════════════════════════════════════════════╝" && \
+		echo "" && \
+		echo "Polling for Jira comment response (timeout: 10 minutes)..." && \
+		echo "" && \
+		FINAL_STATUS="pending_approval" && \
+		for i in $$(seq 1 60); do \
+			POLL_STATUS=$$(kubectl --context $(KUBE_CONTEXT) exec -n $(NAMESPACE) deployment/langgraph-agent -- \
+				curl -s "http://localhost:8000/investigate/$$TICKET/pending" 2>/dev/null | jq -r '.status // "unknown"' 2>/dev/null || echo "unknown") && \
+			if [ "$$POLL_STATUS" = "completed" ]; then \
+				echo "" && \
+				echo "✓ Workflow completed! The Go HITL watcher detected your Jira comment." && \
+				FINAL_STATUS="completed" && \
+				break; \
+			elif [ "$$POLL_STATUS" = "rejected" ]; then \
+				echo "" && \
+				echo "✗ Workflow rejected via Jira comment." && \
+				FINAL_STATUS="rejected" && \
+				break; \
+			fi && \
+			printf "\r  Waiting for Jira comment... [%02d/60] (check every 10s)" "$$i" && \
+			sleep 10; \
+		done && \
+		echo "" && \
+		if [ "$$FINAL_STATUS" = "pending_approval" ]; then \
+			echo "" && \
+			echo "⚠ Timeout waiting for Jira comment. Workflow still paused." && \
+			echo "  You can still add a comment in Jira - the Go watcher will pick it up." && \
+			echo "" && \
+			echo "  Or approve via API:" && \
+			echo "  kubectl exec -n $(NAMESPACE) deployment/langgraph-agent -- \\" && \
+			echo "    curl -X POST http://localhost:8000/investigate/$$TICKET/approve"; \
+		fi; \
+	elif [ "$$STATUS" = "completed" ]; then \
+		echo "⚠ Workflow completed without HITL pause - is HITL_ENABLED=true?"; \
+	elif [ "$$STATUS" = "running" ]; then \
+		echo "⚠ Timeout: Investigation still running. LLM calls may take longer than expected." && \
+		echo "  Continue waiting manually or check: kubectl exec -n $(NAMESPACE) deployment/langgraph-agent -- curl -s http://localhost:8000/investigate/$$TICKET/pending | jq .status"; \
+	else \
+		echo "⚠ Unexpected status: $$STATUS"; \
+	fi && \
+	echo "" && \
+	$(MAKE) test-remediation-2-verify

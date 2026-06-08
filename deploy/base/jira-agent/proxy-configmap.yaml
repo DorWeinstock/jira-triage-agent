@@ -1,0 +1,9 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: proxy-config
+  namespace: jira-k8s-agent
+data:
+  HTTP_PROXY: "http://proxy-dmz.intel.com:912"
+  HTTPS_PROXY: "http://proxy-dmz.intel.com:912"
+  NO_PROXY: "10.96.0.1,kubernetes,kubernetes.default,kubernetes.default.svc,kubernetes.default.svc.cluster.local,10.0.0.0/8,habana-labs.com,.habana-labs.com,intel.com,.intel.com,127.0.0.1,localhost,jira-agent,langgraph-agent-service,vllm-service,.svc,.svc.cluster.local"

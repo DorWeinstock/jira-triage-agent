@@ -1,0 +1,125 @@
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: jira-agent-sa
+  namespace: jira-k8s-agent
+---
+# =============================================================================
+# ClusterRole for K8s INVESTIGATION (read-only)
+# =============================================================================
+# This role provides read-only access for investigating cluster issues.
+# It's separate from remediation permissions to follow least-privilege principle.
+#
+# NOTE: ClusterRole scope is required because the agent investigates issues
+# in any namespace (production, staging, etc.) based on Jira ticket content.
+# Namespace-scoped Role would require pre-defining target namespaces.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: jira-agent-k8s-investigator
+rules:
+# Pod investigation (read-only)
+- apiGroups: [""]
+  resources: ["pods"]
+  verbs: ["get", "list"]
+- apiGroups: [""]
+  resources: ["pods/log"]
+  verbs: ["get"]
+# Event investigation (read-only)
+- apiGroups: [""]
+  resources: ["events"]
+  verbs: ["get", "list"]
+# Node status (read-only, for cluster-wide issues)
+- apiGroups: [""]
+  resources: ["nodes"]
+  verbs: ["get", "list"]
+# ConfigMap investigation (read-only for config analysis)
+- apiGroups: [""]
+  resources: ["configmaps"]
+  verbs: ["get", "list"]
+# Service and endpoint investigation (read-only)
+- apiGroups: [""]
+  resources: ["services", "endpoints"]
+  verbs: ["get", "list"]
+# Deployment investigation (read-only for status checks)
+- apiGroups: ["apps"]
+  resources: ["deployments"]
+  verbs: ["get", "list"]
+# SECURITY NOTE: Secret read access is intentionally limited.
+# The agent only reads secrets to understand configuration issues.
+# Secret values are NOT logged or included in Jira comments.
+- apiGroups: [""]
+  resources: ["secrets"]
+  verbs: ["get", "list"]
+---
+# Bind investigation role to ServiceAccount (cluster-wide read access is safe)
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: jira-agent-k8s-investigator-binding
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: jira-agent-k8s-investigator
+subjects:
+- kind: ServiceAccount
+  name: jira-agent-sa
+  namespace: jira-k8s-agent
+---
+# =============================================================================
+# ClusterRole for K8s REMEDIATION (write operations) - CLUSTER-WIDE
+# =============================================================================
+# This role provides write access for automated remediation across ALL namespaces.
+#
+# SECURITY FEATURES:
+# 1. HITL (Human-In-The-Loop) approval required before any action executes
+# 2. Namespace allowlist enforced in application code (defense in depth)
+# 3. /approve endpoint secured with signature verification
+# 4. Kubernetes audit logging tracks all actions
+#
+# SECURITY WARNING:
+# - This grants cluster-wide write access to the ServiceAccount
+# - If HITL is bypassed (bug/attack), entire cluster is at risk
+# - Ensure security hardening is implemented (see langgraph-agent code)
+#
+# REQUIRED HARDENING (TODO):
+# 1. Secure /approve endpoint with HMAC signature verification
+# 2. Implement ALLOWED_REMEDIATION_NAMESPACES allowlist in K8sRemediationExecutor
+# 3. Enable Kubernetes audit logging for this ServiceAccount
+# 4. Monitor for unauthorized remediation attempts
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: jira-agent-k8s-remediator
+rules:
+# Pod remediation (delete crashed/stuck pods)
+- apiGroups: [""]
+  resources: ["pods"]
+  verbs: ["delete"]
+# ConfigMap remediation (fix configuration issues)
+- apiGroups: [""]
+  resources: ["configmaps"]
+  verbs: ["create", "update", "patch", "delete"]
+# Secret remediation (fix credential/config issues)
+# SECURITY WARNING: Cluster-wide secret write access
+- apiGroups: [""]
+  resources: ["secrets"]
+  verbs: ["create", "update", "patch", "delete"]
+# Deployment remediation (scale, restart)
+- apiGroups: ["apps"]
+  resources: ["deployments", "deployments/scale"]
+  verbs: ["patch", "update"]
+---
+# Bind remediation ClusterRole to ServiceAccount (cluster-wide access)
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: jira-agent-k8s-remediator-binding
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: jira-agent-k8s-remediator
+subjects:
+- kind: ServiceAccount
+  name: jira-agent-sa
+  namespace: jira-k8s-agent

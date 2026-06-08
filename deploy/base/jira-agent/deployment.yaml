@@ -1,0 +1,102 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: jira-agent
+  namespace: jira-k8s-agent
+  labels:
+    app: jira-agent
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: jira-agent
+  template:
+    metadata:
+      labels:
+        app: jira-agent
+    spec:
+      serviceAccountName: jira-agent-sa
+      containers:
+      - name: jira-agent
+        image: artifactory-kfs.habana-labs.com/docker-developers/users/dweinsto/jira-triage-agent:latest
+        imagePullPolicy: Always
+        ports:
+        - containerPort: 8080
+          name: http
+        env:
+        - name: PORT
+          value: "8080"
+        # Jira configuration (self-hosted — username + password)
+        - name: JIRA_URL
+          valueFrom:
+            secretKeyRef:
+              name: jira-triage-agent-secret
+              key: jira-url
+        - name: JIRA_USERNAME
+          valueFrom:
+            secretKeyRef:
+              name: jira-triage-agent-secret
+              key: jira-username
+        - name: JIRA_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: jira-triage-agent-secret
+              key: jira-password
+        # Triage configuration
+        - name: FILTER_PROJECT
+          value: "GAUDISW"
+        - name: FILTER_COMPONENT
+          value: "DevOps_K8S"
+        - name: TEAM_MEMBERS
+          value: "dweinsto,davidtal,gennadyd"
+        - name: PROCESSED_LABEL
+          value: "triage-agent-done"
+        - name: POLLING_INTERVAL
+          value: "5m"
+        - name: MAX_CONCURRENT_DISPATCHES
+          value: "5"
+        # Langgraph triage agent
+        - name: AGENT_URL
+          value: "http://langgraph-agent-service:8000"
+        # Proxy
+        - name: HTTP_PROXY
+          valueFrom:
+            configMapKeyRef:
+              name: proxy-config
+              key: HTTP_PROXY
+              optional: true
+        - name: HTTPS_PROXY
+          valueFrom:
+            configMapKeyRef:
+              name: proxy-config
+              key: HTTPS_PROXY
+              optional: true
+        - name: NO_PROXY
+          valueFrom:
+            configMapKeyRef:
+              name: proxy-config
+              key: NO_PROXY
+              optional: true
+        - name: LOG_FORMAT
+          value: "json"
+        - name: LOG_LEVEL
+          value: "info"
+        resources:
+          limits:
+            memory: 256Mi
+            cpu: 250m
+          requests:
+            cpu: 100m
+            memory: 128Mi
+        readinessProbe:
+          httpGet:
+            path: /ready
+            port: 8080
+          initialDelaySeconds: 5
+          periodSeconds: 10
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 8080
+          initialDelaySeconds: 5
+          periodSeconds: 30

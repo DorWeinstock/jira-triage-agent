@@ -1,0 +1,161 @@
+# ============================================================================
+# vLLM on Gaudi2 - Deployment Template
+# ============================================================================
+#
+# USAGE: Copy this file and adjust the values marked with "<<< CONFIGURE"
+#        Deploy via kustomization.yaml (sets namespace, references both files)
+#
+# MODEL SIZING GUIDE:
+# -----------------------------------------------------------------------
+# | Model Size | TP  | Gaudi Cards | Hugepages   | Memory  | CPU |
+# |------------|-----|-------------|-------------|---------|-----|
+# | 7B         | 1   | 1           | 12000Mi     | 100Gi   | 20  |
+# | 13B        | 1   | 1           | 12000Mi     | 150Gi   | 30  |
+# | 32B        | 2   | 2           | 16000Mi     | 250Gi   | 40  |
+# | 70-72B     | 4   | 4           | 19000Mi     | 400Gi   | 80  |
+# | 110B+      | 8   | 8           | 19000Mi     | 800Gi   | 120 |
+# -----------------------------------------------------------------------
+#
+# RULES:
+# - tensor-parallel-size MUST equal habana.ai/gaudi card count
+# - hugepages-2Mi must match in both limits and requests
+# - max-model-len affects memory: lower = less memory, higher = longer context
+# - gpu-memory-utilization: 0.85 is safe default, 0.90 for tight fits
+# - Each Gaudi2 card has ~96GB HBM. Model needs ~2x params in BF16.
+#   Example: 72B params * 2 bytes = 144GB, needs 4 cards (384GB total)
+#
+# FIXED VALUES (do not change unless you know what you're doing):
+# - runtimeClassName: habana (selects Habana runtime for HPU access)
+# - hostIPC: true (shared memory for TP worker IPC)
+# - hugepages resource (required for SCAL DMA buffer allocation)
+# - OMPI_MCA_btl_vader_single_copy_mechanism: none (CMA fix for containers)
+# - VLLM_WORKER_MULTIPROC_METHOD: spawn (fork incompatible with HPU)
+# - securityContext capabilities: SYS_NICE, IPC_LOCK
+#
+# NOTE: --enforce-eager and PT_HPU_LAZY_MODE=0 are NOT needed.
+#       torch.compile is the default since Habana SW 1.21.0.
+#       --disable-frontend-multiprocessing is a V0 concept, no-op in V1.
+#
+# ============================================================================
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: vllm-MODEL_NAME          # <<< CONFIGURE: e.g., vllm-qwen72b, vllm-llama70b
+  labels:
+    app: vllm-MODEL_NAME         # <<< CONFIGURE: must match name above
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: vllm-MODEL_NAME       # <<< CONFIGURE: must match name above
+  template:
+    metadata:
+      labels:
+        app: vllm-MODEL_NAME     # <<< CONFIGURE: must match name above
+    spec:
+      runtimeClassName: habana
+      hostIPC: true
+      # hostNetwork: true only needed for multi-node TP (not single-node)
+      # If using hostNetwork, also set: dnsPolicy: ClusterFirstWithHostNet
+      containers:
+      - name: vllm
+        image: artifactory-kfs.habana-labs.com/docker-developers/vllm/1.24.0/ubuntu22.04/habanalabs/external/vllm-plugin-2.9.1:1.24.0-481
+        command: ["python3", "-m", "vllm.entrypoints.openai.api_server"]
+        args:
+        - "--model=MODEL_ID"                   # <<< CONFIGURE: HuggingFace model ID
+        - "--tensor-parallel-size=TP_SIZE"      # <<< CONFIGURE: must equal gaudi card count
+        - "--block-size=128"
+        - "--max-model-len=MAX_CTX"             # <<< CONFIGURE: max context length (4096, 8192, 16384, etc.)
+        - "--port=8000"
+        - "--gpu-memory-utilization=0.85"       # <<< CONFIGURE: 0.85 safe, 0.90 tight
+        env:
+        # --- Required for Gaudi2 (DO NOT CHANGE) ---
+        - name: OMPI_MCA_btl_vader_single_copy_mechanism
+          value: "none"
+        - name: VLLM_WORKER_MULTIPROC_METHOD
+          value: "spawn"
+        - name: PT_HPU_ENABLE_LAZY_COLLECTIVES
+          value: "true"
+        # --- Model access (if model is gated) ---
+        - name: HF_TOKEN
+          valueFrom:
+            secretKeyRef:
+              name: jira-k8s-agent-secret   # <<< CONFIGURE: your secret name
+              key: huggingface-token         # <<< CONFIGURE: your secret key
+              optional: true                 # set to false if model requires auth
+        # --- Proxy (if needed for model downloads) ---
+        - name: HTTP_PROXY
+          valueFrom:
+            configMapKeyRef:
+              name: proxy-config
+              key: HTTP_PROXY
+              optional: true
+        - name: HTTPS_PROXY
+          valueFrom:
+            configMapKeyRef:
+              name: proxy-config
+              key: HTTPS_PROXY
+              optional: true
+        - name: NO_PROXY
+          valueFrom:
+            configMapKeyRef:
+              name: proxy-config
+              key: NO_PROXY
+              optional: true
+        resources:
+          limits:
+            habana.ai/gaudi: "NUM_CARDS"        # <<< CONFIGURE: must equal tensor-parallel-size
+            hugepages-2Mi: "HUGEPAGES_MI"        # <<< CONFIGURE: see sizing guide above
+            memory: "MEM_LIMIT"                  # <<< CONFIGURE: see sizing guide above
+            cpu: "CPU_LIMIT"                     # <<< CONFIGURE: see sizing guide above
+          requests:
+            habana.ai/gaudi: "NUM_CARDS"         # <<< CONFIGURE: must equal limits
+            hugepages-2Mi: "HUGEPAGES_MI"        # <<< CONFIGURE: must equal limits
+            memory: "MEM_REQUEST"                # <<< CONFIGURE: ~75% of limit
+            cpu: "CPU_REQUEST"                   # <<< CONFIGURE: ~50% of limit
+        securityContext:
+          capabilities:
+            add: ["SYS_NICE", "IPC_LOCK"]
+        ports:
+        - containerPort: 8000
+          name: http
+        volumeMounts:
+        - name: model-cache
+          mountPath: /root/.cache/huggingface
+        - name: dshm
+          mountPath: /dev/shm
+        startupProbe:
+          httpGet:
+            path: /health
+            port: 8000
+          initialDelaySeconds: 60
+          periodSeconds: 30
+          timeoutSeconds: 10
+          failureThreshold: 120             # 60 + 120*30 = ~61 min max startup time
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: 8000
+          initialDelaySeconds: 10
+          periodSeconds: 10
+          timeoutSeconds: 10
+          failureThreshold: 3
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 8000
+          initialDelaySeconds: 10
+          periodSeconds: 30
+          timeoutSeconds: 10
+          failureThreshold: 3
+      volumes:
+      - name: dshm
+        emptyDir:
+          medium: Memory
+          sizeLimit: "20Gi"
+      - name: model-cache
+        hostPath:
+          path: /tmp/vllm-model-cache
+          type: DirectoryOrCreate

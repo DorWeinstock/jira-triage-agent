@@ -1,0 +1,98 @@
+---
+# Namespace for our test scenario
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: production
+---
+# ConfigMap with intentionally wrong database config
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: api-server-config
+  namespace: production
+data:
+  DB_HOST: "localhost"  # Wrong - no database running here
+  DB_PORT: "5432"
+  DB_NAME: "api_db"
+---
+# Deployment that will crash due to database connection failure
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: api-server-prod
+  namespace: production
+  labels:
+    app: api-server
+    version: v2.4.2
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: api-server
+  template:
+    metadata:
+      labels:
+        app: api-server
+        version: v2.4.2
+    spec:
+      containers:
+      - name: api-server
+        image: postgres:15-alpine  # Using postgres image to try connecting to DB
+        command:
+          - sh
+          - -c
+          - |
+            echo "$(date) - INFO: Starting API server v2.4.2"
+            echo "$(date) - INFO: Connecting to database at $DB_HOST:$DB_PORT"
+
+            # Try to connect to database (will fail)
+            if ! psql -h "$DB_HOST" -p "$DB_PORT" -U postgres -d "$DB_NAME" -c "SELECT 1" 2>/dev/null; then
+              echo "$(date) - ERROR: Failed to connect to database: connection refused"
+              echo "$(date) - ERROR: Database host: $DB_HOST"
+              echo "$(date) - ERROR: Database port: $DB_PORT"
+              exit 1
+            fi
+
+            echo "$(date) - INFO: API server started successfully"
+            sleep 3600
+        env:
+        - name: DB_HOST
+          valueFrom:
+            configMapKeyRef:
+              name: api-server-config
+              key: DB_HOST
+        - name: DB_PORT
+          valueFrom:
+            configMapKeyRef:
+              name: api-server-config
+              key: DB_PORT
+        - name: DB_NAME
+          valueFrom:
+            configMapKeyRef:
+              name: api-server-config
+              key: DB_NAME
+        - name: PGPASSWORD
+          value: "wrong-password"  # Intentionally wrong
+        resources:
+          requests:
+            memory: "64Mi"
+            cpu: "100m"
+          limits:
+            memory: "128Mi"
+            cpu: "200m"
+---
+# Service for the API
+apiVersion: v1
+kind: Service
+metadata:
+  name: api-server
+  namespace: production
+spec:
+  selector:
+    app: api-server
+  ports:
+  - protocol: TCP
+    port: 8080
+    targetPort: 8080
+  type: ClusterIP

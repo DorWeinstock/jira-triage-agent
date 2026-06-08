@@ -1,0 +1,47 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: notification-service
+  namespace: production
+  labels:
+    app: notification-service
+spec:
+  replicas: 0
+  selector:
+    matchLabels:
+      app: notification-service
+  template:
+    metadata:
+      labels:
+        app: notification-service
+    spec:
+      containers:
+      - name: notification-api
+        image: busybox:latest
+        command: ["/bin/sh", "-c"]
+        args:
+        - |
+          echo "Notification service starting..."
+          echo "SMTP_HOST=$SMTP_HOST"
+          echo "SMTP_PORT=$SMTP_PORT"
+          echo "SENDER_EMAIL=$SENDER_EMAIL"
+          while true; do sleep 3600; done
+        envFrom:
+        - configMapRef:
+            name: notification-config
+        resources:
+          limits:
+            memory: "128Mi"
+            cpu: "100m"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: notification-service
+  namespace: production
+spec:
+  selector:
+    app: notification-service
+  ports:
+  - port: 80
+    targetPort: 80

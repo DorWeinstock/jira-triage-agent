@@ -1,0 +1,127 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: vllm-qwen3
+  labels:
+    app: vllm-qwen3
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: vllm-qwen3
+  template:
+    metadata:
+      labels:
+        app: vllm-qwen3
+    spec:
+      runtimeClassName: habana
+      hostIPC: true
+      hostNetwork: true
+      dnsPolicy: ClusterFirstWithHostNet
+      containers:
+      - name: vllm
+        # Verified image from internal registry (SynapseAI 1.24.0, vLLM-gaudi plugin).
+        # Uses 2 Gaudi cards via tensor-parallel-size=2 to fit Qwen3-Next-80B-FP8
+        # (~80GB weights) with headroom for KV cache.
+        image: artifactory-kfs.habana-labs.com/docker-developers/vllm/1.24.0/ubuntu22.04/habanalabs/external/vllm-plugin-2.9.1:1.24.0-481
+        command: ["python3", "-m", "vllm.entrypoints.openai.api_server"]
+        args:
+        - "--model=Qwen/Qwen3-Next-80B-A3B-Instruct-FP8"
+        - "--tensor-parallel-size=2"
+        - "--block-size=128"
+        - "--max-model-len=8192"
+        - "--port=8000"
+        - "--gpu-memory-utilization=0.90"
+        # Disable chain-of-thought reasoning by default for faster triage evaluation.
+        # Agents may override per-prompt with /no_think or /think.
+        - "--chat-template-kwargs={\"enable_thinking\": false}"
+        env:
+        - name: OMPI_MCA_btl_vader_single_copy_mechanism
+          value: "none"
+        - name: VLLM_WORKER_MULTIPROC_METHOD
+          value: "spawn"
+        - name: PT_HPU_ENABLE_LAZY_COLLECTIVES
+          value: "true"
+        - name: HF_TOKEN
+          valueFrom:
+            secretKeyRef:
+              name: jira-triage-agent-secret
+              key: huggingface-token
+              optional: true   # model may already be cached
+        - name: HF_HOME
+          value: /root/.cache/huggingface
+        - name: HTTP_PROXY
+          valueFrom:
+            configMapKeyRef:
+              name: proxy-config
+              key: HTTP_PROXY
+              optional: true
+        - name: HTTPS_PROXY
+          valueFrom:
+            configMapKeyRef:
+              name: proxy-config
+              key: HTTPS_PROXY
+              optional: true
+        - name: NO_PROXY
+          valueFrom:
+            configMapKeyRef:
+              name: proxy-config
+              key: NO_PROXY
+              optional: true
+        resources:
+          limits:
+            habana.ai/gaudi: "2"
+            hugepages-2Mi: "5000Mi"
+            memory: "200Gi"
+            cpu: "40"
+          requests:
+            habana.ai/gaudi: "2"
+            hugepages-2Mi: "5000Mi"
+            memory: "150Gi"
+            cpu: "20"
+        securityContext:
+          capabilities:
+            add: ["SYS_NICE", "IPC_LOCK"]
+        ports:
+        - containerPort: 8000
+          name: http
+        volumeMounts:
+        - name: model-cache
+          mountPath: /root/.cache/huggingface
+        - name: dshm
+          mountPath: /dev/shm
+        startupProbe:
+          httpGet:
+            path: /health
+            port: 8000
+          initialDelaySeconds: 120
+          periodSeconds: 30
+          timeoutSeconds: 10
+          failureThreshold: 120
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: 8000
+          initialDelaySeconds: 10
+          periodSeconds: 10
+          timeoutSeconds: 10
+          failureThreshold: 3
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 8000
+          initialDelaySeconds: 10
+          periodSeconds: 30
+          timeoutSeconds: 10
+          failureThreshold: 3
+      volumes:
+      - name: dshm
+        emptyDir:
+          medium: Memory
+          sizeLimit: "5Gi"
+      - name: model-cache
+        hostPath:
+          path: /tmp/vllm-model-cache
+          type: DirectoryOrCreate

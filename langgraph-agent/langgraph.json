@@ -1,0 +1,9 @@
+{
+    "dependencies": [
+        "."
+    ],
+    "graphs": {
+        "jira_k8s_agent": "src.supervisor:get_graph_for_studio"
+    },
+    "env": ".env"
+}

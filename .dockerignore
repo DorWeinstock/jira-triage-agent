@@ -1,0 +1,39 @@
+# Git
+.git
+.gitignore
+
+# IDE
+.idea
+.vscode
+*.swp
+*.swo
+
+# Build artifacts
+bin/
+*.exe
+jira-agent
+coverage.out
+
+# Documentation
+docs/
+*.md
+!README.md
+
+# Test files
+*_test.go
+tests/
+
+# Python virtual environments
+venv/
+.venv/
+__pycache__/
+*.pyc
+
+# Local development
+.env
+*.local
+
+# Old components (not needed for jira-agent)
+jira-mcp/
+jira-webhook-server/
+langgraph-agent/

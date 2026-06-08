@@ -1,0 +1,34 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: payment-service
+  namespace: production
+  labels:
+    app: payment-service
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: payment-service
+  template:
+    metadata:
+      labels:
+        app: payment-service
+    spec:
+      containers:
+      - name: payment-api
+        image: busybox:latest
+        command: ["/bin/sh", "-c"]
+        args:
+        - |
+          echo "Payment service starting..."
+          echo "DATABASE_URL=$DATABASE_URL"
+          echo "REDIS_HOST=$REDIS_HOST"
+          while true; do sleep 3600; done
+        envFrom:
+        - configMapRef:
+            name: payment-config
+        resources:
+          limits:
+            memory: "128Mi"
+            cpu: "100m"

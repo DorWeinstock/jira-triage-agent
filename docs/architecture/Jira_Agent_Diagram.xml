@@ -1,0 +1,438 @@
+<mxfile host="app.diagrams.net" agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36 Edg/144.0.0.0" version="29.3.7">
+  <diagram id="C5RBs43oDa-KdzZeNtuy" name="Architecture">
+    <mxGraphModel dx="1371" dy="758" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1100" pageHeight="1800" math="0" shadow="0">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+        <mxCell id="color_legend" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#666666;align=left;verticalAlign=top;spacingLeft=8;spacingTop=5;fontSize=10;" value="&lt;b&gt;Color Legend&lt;/b&gt;&lt;br&gt;&lt;br&gt;&lt;font color=&quot;#9673a6&quot;&gt;■&lt;/font&gt; Purple = AI Agent nodes (LangGraph workflow)&lt;br&gt;&lt;font color=&quot;#d6b656&quot;&gt;◆&lt;/font&gt; Yellow = Decision points / MCP Servers&lt;br&gt;&lt;font color=&quot;#6c8ebf&quot;&gt;■&lt;/font&gt; Blue = Go monolith components&lt;br&gt;&lt;font color=&quot;#82b366&quot;&gt;■&lt;/font&gt; Green = External systems / Start-End&lt;br&gt;&lt;font color=&quot;#b85450&quot;&gt;■&lt;/font&gt; Red = Retry loop (remediation)&lt;br&gt;□ Gray = Infrastructure / Utility" vertex="1">
+          <mxGeometry height="130" width="280" x="1050" y="20" as="geometry" />
+        </mxCell>
+        <mxCell id="jira_cloud" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontStyle=1;fontSize=13;" value="Jira Server" vertex="1">
+          <mxGeometry height="45" width="150" x="380" y="30" as="geometry" />
+        </mxCell>
+        <mxCell id="k8s_cluster" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontStyle=1;fontSize=13;" value="K8s Clusters&lt;br&gt;&lt;font style=&quot;font-size:10px&quot;&gt;hldc02, hldc03 (multi-cluster)&lt;/font&gt;" vertex="1">
+          <mxGeometry height="45" width="190" x="770" y="20" as="geometry" />
+        </mxCell>
+        <mxCell id="go_sw" parent="1" style="swimlane;whiteSpace=wrap;html=1;startSize=25;fillColor=#f5f5f5;fontColor=#333333;strokeColor=#666666;fontStyle=1;fontSize=13;" value="Go Monolith (jira-agent) :8080" vertex="1">
+          <mxGeometry height="310" width="980" x="40" y="110" as="geometry" />
+        </mxCell>
+        <mxCell id="go_poller" parent="go_sw" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;" value="Jira Poller&lt;br&gt;&lt;font style=&quot;font-size:10px&quot;&gt;JQL: project + component + type + label + lookback filter&lt;/font&gt;" vertex="1">
+          <mxGeometry height="55" width="270" x="60" y="40" as="geometry" />
+        </mxCell>
+        <mxCell id="go_dispatcher" parent="go_sw" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;" value="HTTP Dispatcher&lt;br&gt;&lt;font style=&quot;font-size:10px&quot;&gt;Max 5 concurrent | dedup cache (10min TTL)&lt;/font&gt;" vertex="1">
+          <mxGeometry height="55" width="270" x="60" y="180" as="geometry" />
+        </mxCell>
+        <mxCell id="go_mcp_jira" parent="go_sw" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;" value="&lt;b&gt;MCP Jira Server&lt;/b&gt;&lt;br&gt;&lt;font style=&quot;font-size:10px&quot;&gt;/mcp/jira&lt;/font&gt;" vertex="1">
+          <mxGeometry height="50" width="180" x="450" y="42.5" as="geometry" />
+        </mxCell>
+        <mxCell id="go_mcp_k8s" parent="go_sw" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;" value="&lt;b&gt;MCP K8s Server&lt;/b&gt;&lt;br&gt;&lt;font style=&quot;font-size:10px&quot;&gt;/mcp/k8s&lt;/font&gt;" vertex="1">
+          <mxGeometry height="50" width="180" x="670" y="42.5" as="geometry" />
+        </mxCell>
+        <mxCell id="go_hitl" parent="go_sw" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;" value="&lt;b&gt;HITL Watcher&lt;/b&gt;&lt;br&gt;&lt;font style=&quot;font-size:10px&quot;&gt;POST /hitl/pending (register ticket)&lt;br&gt;Polls Jira comments → POST /approve or /reject&lt;/font&gt;" vertex="1">
+          <mxGeometry height="55" width="280" x="510" y="180" as="geometry" />
+        </mxCell>
+        <mxCell id="e_poll_disp" edge="1" parent="go_sw" source="go_poller" style="edgeStyle=orthogonalEdgeStyle;rounded=0;" target="go_dispatcher">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="lg_sw" parent="1" style="swimlane;whiteSpace=wrap;html=1;startSize=25;fillColor=#f5f5f5;fontColor=#333333;strokeColor=#666666;fontStyle=1;fontSize=13;" value="LangGraph Agent Workflow :8000" vertex="1">
+          <mxGeometry height="1200" width="980" x="40" y="500" as="geometry" />
+        </mxCell>
+        <mxCell id="lg_init" parent="lg_sw" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#666666;" value="initialize" vertex="1">
+          <mxGeometry height="30" width="120" x="255.5" y="40" as="geometry" />
+        </mxCell>
+        <mxCell id="lg_read" parent="lg_sw" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;" value="read_ticket" vertex="1">
+          <mxGeometry height="42" width="150" x="240" y="95" as="geometry" />
+        </mxCell>
+        <mxCell id="lg_valid" parent="lg_sw" style="rhombus;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;fontSize=11;" value="ticket_id &amp;amp;&lt;br&gt;namespace &amp;amp;&lt;br&gt;resources?" vertex="1">
+          <mxGeometry height="70" width="110" x="260" y="165" as="geometry" />
+        </mxCell>
+        <mxCell id="lg_valid_note" parent="lg_sw" style="text;html=1;strokeColor=none;fillColor=none;align=left;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontSize=9;fontColor=#888888;" value="4-way routing:&lt;br&gt;→ investigate (has namespace + resources)&lt;br&gt;→ synthesize (no K8s resources, has context)&lt;br&gt;→ skip (no namespace → error to Jira)&lt;br&gt;→ post_comment (no ticket_id)" vertex="1">
+          <mxGeometry height="65" width="210" x="350" y="155" as="geometry" />
+        </mxCell>
+        <mxCell id="lg_invest" parent="lg_sw" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;" value="investigate_cluster" vertex="1">
+          <mxGeometry height="42" width="170" x="230" y="260" as="geometry" />
+        </mxCell>
+        <mxCell id="lg_diag" parent="lg_sw" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;" value="diagnose" vertex="1">
+          <mxGeometry height="42" width="120" x="255" y="349" as="geometry" />
+        </mxCell>
+        <mxCell id="lg_hitl" parent="lg_sw" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;dashed=1;" value="prepare_hitl" vertex="1">
+          <mxGeometry height="35" width="120" x="255" y="421" as="geometry" />
+        </mxCell>
+        <mxCell id="lg_action" parent="lg_sw" style="rhombus;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;fontSize=11;" value="Has&lt;br&gt;action?" vertex="1">
+          <mxGeometry height="65" width="85" x="273" y="486" as="geometry" />
+        </mxCell>
+        <mxCell id="lg_hitl_decision" parent="lg_sw" style="rhombus;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;fontSize=11;dashed=1;" value="HITL&lt;br&gt;Approved?" vertex="1">
+          <mxGeometry height="65" width="95" x="268" y="580" as="geometry" />
+        </mxCell>
+        <mxCell id="lg_hitl_note" parent="lg_sw" style="text;html=1;strokeColor=none;fillColor=none;align=left;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontSize=9;fontColor=#888888;" value="When HITL enabled:&lt;br&gt;interrupt_before pauses here.&lt;br&gt;HITL Watcher polls Jira for&lt;br&gt;approve/reject comment." vertex="1">
+          <mxGeometry height="55" width="170" x="370" y="580" as="geometry" />
+        </mxCell>
+        <mxCell id="lg_rem" parent="lg_sw" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;" value="attempt_remediation" vertex="1">
+          <mxGeometry height="42" width="180" x="225" y="680" as="geometry" />
+        </mxCell>
+        <mxCell id="lg_result" parent="lg_sw" style="rhombus;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;fontSize=11;" value="Result?" vertex="1">
+          <mxGeometry height="65" width="85" x="273" y="752" as="geometry" />
+        </mxCell>
+        <mxCell id="lg_verify" parent="lg_sw" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;" value="verify_fix" vertex="1">
+          <mxGeometry height="42" width="140" x="245" y="857" as="geometry" />
+        </mxCell>
+        <mxCell id="lg_verified" parent="lg_sw" style="rhombus;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;fontSize=11;" value="Fix&lt;br&gt;Verified?" vertex="1">
+          <mxGeometry height="65" width="85" x="273" y="929" as="geometry" />
+        </mxCell>
+        <mxCell id="lg_incr" parent="lg_sw" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;" value="increment_remediation&lt;br&gt;&lt;font style=&quot;font-size:10px&quot;&gt;(retry with delay)&lt;/font&gt;" vertex="1">
+          <mxGeometry height="40" width="180" x="520" y="770" as="geometry" />
+        </mxCell>
+        <mxCell id="lg_post" parent="lg_sw" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;" value="post_comment" vertex="1">
+          <mxGeometry height="42" width="130" x="250" y="1050" as="geometry" />
+        </mxCell>
+        <mxCell id="lg_end" parent="lg_sw" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontStyle=1;" value="END" vertex="1">
+          <mxGeometry height="30" width="70" x="280" y="1125" as="geometry" />
+        </mxCell>
+        <mxCell id="lbl_ja1" parent="lg_sw" style="text;html=1;strokeColor=none;fillColor=none;align=right;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontSize=10;fontStyle=2;fontColor=#9673a6;" value="JiraAgent" vertex="1">
+          <mxGeometry height="25" width="100" x="140" y="103.5" as="geometry" />
+        </mxCell>
+        <mxCell id="lbl_ki" parent="lg_sw" style="text;html=1;strokeColor=none;fillColor=none;align=right;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontSize=10;fontStyle=2;fontColor=#9673a6;" value="K8sInvestigator&lt;br&gt;&lt;font color=&quot;#82b366&quot;&gt;(ReadOnly)&lt;/font&gt;" vertex="1">
+          <mxGeometry height="35" width="140" x="90" y="260" as="geometry" />
+        </mxCell>
+        <mxCell id="lbl_dg" parent="lg_sw" style="text;html=1;strokeColor=none;fillColor=none;align=right;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontSize=10;fontStyle=2;fontColor=#9673a6;" value="Diagnostician&lt;br&gt;&lt;font color=&quot;#888888&quot;&gt;(LLM only, no tools)&lt;/font&gt;" vertex="1">
+          <mxGeometry height="35" width="160" x="95" y="349" as="geometry" />
+        </mxCell>
+        <mxCell id="lbl_re" parent="lg_sw" style="text;html=1;strokeColor=none;fillColor=none;align=right;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontSize=10;fontStyle=2;fontColor=#9673a6;" value="K8sRemediationExecutor&lt;br&gt;&lt;font color=&quot;#b85450&quot;&gt;(Write, No LLM)&lt;/font&gt;" vertex="1">
+          <mxGeometry height="35" width="180" x="30" y="677" as="geometry" />
+        </mxCell>
+        <mxCell id="lbl_vs" parent="lg_sw" style="text;html=1;strokeColor=none;fillColor=none;align=right;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontSize=10;fontStyle=2;fontColor=#9673a6;" value="VerificationService&lt;br&gt;&lt;font color=&quot;#82b366&quot;&gt;(ReadOnly)&lt;/font&gt;" vertex="1">
+          <mxGeometry height="35" width="150" x="80" y="857" as="geometry" />
+        </mxCell>
+        <mxCell id="lbl_ja2" parent="lg_sw" style="text;html=1;strokeColor=none;fillColor=none;align=right;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontSize=10;fontStyle=2;fontColor=#9673a6;" value="JiraAgent" vertex="1">
+          <mxGeometry height="25" width="100" x="130" y="1055" as="geometry" />
+        </mxCell>
+        <mxCell id="e_init_read" edge="1" parent="lg_sw" source="lg_init" style="edgeStyle=orthogonalEdgeStyle;rounded=0;" target="lg_read">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e_read_valid" edge="1" parent="lg_sw" source="lg_read" style="edgeStyle=orthogonalEdgeStyle;rounded=0;" target="lg_valid">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e_valid_yes" edge="1" parent="lg_sw" source="lg_valid" style="edgeStyle=orthogonalEdgeStyle;rounded=0;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" target="lg_invest">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e_valid_yes_lbl" connectable="0" parent="e_valid_yes" style="edgeLabel;html=1;align=center;verticalAlign=middle;resizable=0;points=[];fontSize=10;" value="Yes" vertex="1">
+          <mxGeometry relative="1" x="-0.3" y="-1" as="geometry">
+            <mxPoint as="offset" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="e_valid_no" edge="1" parent="lg_sw" source="lg_valid" style="edgeStyle=orthogonalEdgeStyle;rounded=0;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=1;entryY=0.5;entryDx=0;entryDy=0;dashed=1;" target="lg_post">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="460" y="199" />
+              <mxPoint x="460" y="1071" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="e_valid_no_lbl" connectable="0" parent="e_valid_no" style="edgeLabel;html=1;align=center;verticalAlign=middle;resizable=0;points=[];fontSize=10;" value="No ticket_id" vertex="1">
+          <mxGeometry relative="1" x="-0.95" y="1" as="geometry">
+            <mxPoint as="offset" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="e_invest_diag" edge="1" parent="lg_sw" source="lg_invest" style="edgeStyle=orthogonalEdgeStyle;rounded=0;" target="lg_diag">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e_diag_hitl" edge="1" parent="lg_sw" source="lg_diag" style="edgeStyle=orthogonalEdgeStyle;rounded=0;" target="lg_hitl">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e_hitl_action" edge="1" parent="lg_sw" source="lg_hitl" style="edgeStyle=orthogonalEdgeStyle;rounded=0;" target="lg_action">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e_action_yes" edge="1" parent="lg_sw" source="lg_action" style="edgeStyle=orthogonalEdgeStyle;rounded=0;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" target="lg_hitl_decision">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e_action_yes_lbl" connectable="0" parent="e_action_yes" style="edgeLabel;html=1;align=center;verticalAlign=middle;resizable=0;points=[];fontSize=10;" value="Yes" vertex="1">
+          <mxGeometry relative="1" x="-0.3" y="-1" as="geometry">
+            <mxPoint as="offset" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="e_action_no" edge="1" parent="lg_sw" source="lg_action" style="edgeStyle=orthogonalEdgeStyle;rounded=0;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=1;entryY=0.5;entryDx=0;entryDy=0;dashed=1;" target="lg_post">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="490" y="518" />
+              <mxPoint x="490" y="1071" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="e_action_no_lbl" connectable="0" parent="e_action_no" style="edgeLabel;html=1;align=center;verticalAlign=middle;resizable=0;points=[];fontSize=10;" value="No" vertex="1">
+          <mxGeometry relative="1" x="-0.95" y="1" as="geometry">
+            <mxPoint as="offset" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="e_hitl_approve" edge="1" parent="lg_sw" source="lg_hitl_decision" style="edgeStyle=orthogonalEdgeStyle;rounded=0;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" target="lg_rem">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e_hitl_approve_lbl" connectable="0" parent="e_hitl_approve" style="edgeLabel;html=1;align=center;verticalAlign=middle;resizable=0;points=[];fontSize=10;fontColor=#82b366;" value="Approve" vertex="1">
+          <mxGeometry relative="1" x="-0.3" y="-1" as="geometry">
+            <mxPoint as="offset" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="e_hitl_reject" edge="1" parent="lg_sw" source="lg_hitl_decision" style="edgeStyle=orthogonalEdgeStyle;rounded=0;exitX=0;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;dashed=1;strokeColor=#b85450;" target="lg_post">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="140" y="612" />
+              <mxPoint x="140" y="1071" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="e_hitl_reject_lbl" connectable="0" parent="e_hitl_reject" style="edgeLabel;html=1;align=center;verticalAlign=middle;resizable=0;points=[];fontSize=10;fontColor=#b85450;" value="Reject" vertex="1">
+          <mxGeometry relative="1" x="-0.9" y="-1" as="geometry">
+            <mxPoint as="offset" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="e_rem_result" edge="1" parent="lg_sw" source="lg_rem" style="edgeStyle=orthogonalEdgeStyle;rounded=0;" target="lg_result">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e_result_ok" edge="1" parent="lg_sw" source="lg_result" style="edgeStyle=orthogonalEdgeStyle;rounded=0;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" target="lg_verify">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e_result_ok_lbl" connectable="0" parent="e_result_ok" style="edgeLabel;html=1;align=center;verticalAlign=middle;resizable=0;points=[];fontSize=10;" value="Success" vertex="1">
+          <mxGeometry relative="1" x="-0.3" y="-1" as="geometry">
+            <mxPoint as="offset" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="e_result_retry" edge="1" parent="lg_sw" source="lg_result" style="edgeStyle=orthogonalEdgeStyle;rounded=0;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" target="lg_incr">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e_result_retry_lbl" connectable="0" parent="e_result_retry" style="edgeLabel;html=1;align=center;verticalAlign=middle;resizable=0;points=[];fontSize=10;" value="Failed&lt;br&gt;(retry)" vertex="1">
+          <mxGeometry relative="1" x="-0.2" y="1" as="geometry">
+            <mxPoint as="offset" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="e_result_skip" edge="1" parent="lg_sw" source="lg_result" style="edgeStyle=orthogonalEdgeStyle;rounded=0;exitX=0;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;dashed=1;" target="lg_post">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="170" y="784" />
+              <mxPoint x="170" y="1071" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="e_result_skip_lbl" connectable="0" parent="e_result_skip" style="edgeLabel;html=1;align=center;verticalAlign=middle;resizable=0;points=[];fontSize=10;" value="Not attempted&lt;br&gt;or max attempts" vertex="1">
+          <mxGeometry relative="1" x="-0.85" y="-1" as="geometry">
+            <mxPoint as="offset" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="e_verify_check" edge="1" parent="lg_sw" source="lg_verify" style="edgeStyle=orthogonalEdgeStyle;rounded=0;" target="lg_verified">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e_verified_yes" edge="1" parent="lg_sw" source="lg_verified" style="edgeStyle=orthogonalEdgeStyle;rounded=0;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" target="lg_post">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e_verified_yes_lbl" connectable="0" parent="e_verified_yes" style="edgeLabel;html=1;align=center;verticalAlign=middle;resizable=0;points=[];fontSize=10;" value="Resolved" vertex="1">
+          <mxGeometry relative="1" x="-0.3" y="-1" as="geometry">
+            <mxPoint as="offset" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="e_verified_retry" edge="1" parent="lg_sw" source="lg_verified" style="edgeStyle=orthogonalEdgeStyle;rounded=0;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0.5;entryY=1;entryDx=0;entryDy=0;" target="lg_incr">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e_verified_retry_lbl" connectable="0" parent="e_verified_retry" style="edgeLabel;html=1;align=center;verticalAlign=middle;resizable=0;points=[];fontSize=10;" value="Not resolved&lt;br&gt;(retry)" vertex="1">
+          <mxGeometry relative="1" x="-0.2" y="1" as="geometry">
+            <mxPoint as="offset" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="e_incr_loop" edge="1" parent="lg_sw" source="lg_incr" style="edgeStyle=orthogonalEdgeStyle;rounded=0;entryX=1;entryY=0.5;entryDx=0;entryDy=0;strokeColor=#b85450;strokeWidth=2;exitX=0.328;exitY=-0.05;exitDx=0;exitDy=0;exitPerimeter=0;" target="lg_diag">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="579" y="770" />
+              <mxPoint x="580" y="770" />
+              <mxPoint x="580" y="370" />
+            </Array>
+            <mxPoint x="610" y="720" as="sourcePoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="e_incr_loop_lbl" connectable="0" parent="e_incr_loop" style="edgeLabel;html=1;align=center;verticalAlign=middle;resizable=0;points=[];fontSize=10;fontColor=#b85450;fontStyle=1;" value="Loop back&lt;br&gt;(max 2 attempts, configurable)" vertex="1">
+          <mxGeometry relative="1" x="0.2" y="15" as="geometry">
+            <mxPoint as="offset" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="e_post_end" edge="1" parent="lg_sw" source="lg_post" style="edgeStyle=orthogonalEdgeStyle;rounded=0;" target="lg_end">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="mcp_legend" parent="lg_sw" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;align=left;verticalAlign=top;spacingLeft=8;spacingTop=5;fontSize=10;" value="&lt;b&gt;Agent → MCP Tools (via Go :8080)&lt;/b&gt;&lt;br&gt;&lt;br&gt;&lt;b&gt;JiraAgent&lt;/b&gt; → /mcp/jira&lt;br&gt;&amp;nbsp; get_ticket, search_tickets, add_comment, add_label&lt;br&gt;&lt;br&gt;&lt;b&gt;JenkinsInvestigator&lt;/b&gt; → /mcp/jenkins &lt;font color=&quot;#d6b656&quot;&gt;(Optional)&lt;/font&gt;&lt;br&gt;&amp;nbsp; get_build_info, get_console_log, get_parent_build_info&lt;br&gt;&lt;br&gt;&lt;b&gt;K8sInvestigator&lt;/b&gt; → /mcp/k8s/{cluster} &lt;font color=&quot;#82b366&quot;&gt;(ReadOnly)&lt;/font&gt;&lt;br&gt;&amp;nbsp; get_pods, deployments, services, logs, events,&lt;br&gt;&amp;nbsp; describe_pod (+all_namespaces variants)&lt;br&gt;&lt;br&gt;&lt;b&gt;Diagnostician&lt;/b&gt; → &lt;font color=&quot;#888888&quot;&gt;No tools (LLM only via vLLM)&lt;/font&gt;&lt;br&gt;&lt;br&gt;&lt;b&gt;K8sRemediationExecutor&lt;/b&gt; → /mcp/k8s &lt;font color=&quot;#b85450&quot;&gt;(Write)&lt;/font&gt;&lt;br&gt;&amp;nbsp; kubectl_scale, rollout_restart, apply, delete&lt;br&gt;&lt;br&gt;&lt;b&gt;VerificationService&lt;/b&gt; → /mcp/k8s &lt;font color=&quot;#82b366&quot;&gt;(ReadOnly)&lt;/font&gt;" vertex="1">
+          <mxGeometry height="240" width="330" x="630" y="920" as="geometry" />
+        </mxCell>
+        <mxCell id="e_jira_poll" edge="1" parent="1" source="jira_cloud" style="edgeStyle=orthogonalEdgeStyle;rounded=0;" target="go_poller">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e_jira_poll_lbl" connectable="0" parent="e_jira_poll" style="edgeLabel;html=1;align=center;verticalAlign=middle;resizable=0;points=[];fontSize=10;" value="Polls via JQL&lt;br&gt;every 1m (default 5m)" vertex="1">
+          <mxGeometry relative="1" x="-0.2" y="-1" as="geometry">
+            <mxPoint as="offset" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="e_mcpj_jira" edge="1" parent="1" source="go_mcp_jira" style="edgeStyle=orthogonalEdgeStyle;rounded=0;dashed=1;exitX=0.5;exitY=0;exitDx=0;exitDy=0;entryX=1;entryY=0.5;entryDx=0;entryDy=0;" target="jira_cloud">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e_mcpj_jira_lbl" connectable="0" parent="e_mcpj_jira" style="edgeLabel;html=1;align=center;verticalAlign=middle;resizable=0;points=[];fontSize=9;" value="Jira REST API" vertex="1">
+          <mxGeometry relative="1" x="-0.1" y="1" as="geometry">
+            <mxPoint as="offset" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="e_mcpk_k8s" edge="1" parent="1" source="go_mcp_k8s" style="edgeStyle=orthogonalEdgeStyle;rounded=0;dashed=1;exitX=0.5;exitY=0;exitDx=0;exitDy=0;entryX=0.5;entryY=1;entryDx=0;entryDy=0;" target="k8s_cluster">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e_mcpk_k8s_lbl" connectable="0" parent="e_mcpk_k8s" style="edgeLabel;html=1;align=center;verticalAlign=middle;resizable=0;points=[];fontSize=9;" value="kubectl API" vertex="1">
+          <mxGeometry relative="1" x="-0.1" y="1" as="geometry">
+            <mxPoint as="offset" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="e_hitl_jira" edge="1" parent="1" source="go_hitl" style="edgeStyle=orthogonalEdgeStyle;rounded=0;dashed=1;exitX=0;exitY=0.5;exitDx=0;exitDy=0;entryX=0.5;entryY=1;entryDx=0;entryDy=0;" target="jira_cloud">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e_hitl_jira_lbl" connectable="0" parent="e_hitl_jira" style="edgeLabel;html=1;align=center;verticalAlign=middle;resizable=0;points=[];fontSize=9;" value="Polls comments&lt;br&gt;for approve/reject" vertex="1">
+          <mxGeometry relative="1" x="-0.1" y="1" as="geometry">
+            <mxPoint as="offset" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="e_disp_lg" edge="1" parent="1" source="go_dispatcher" style="edgeStyle=orthogonalEdgeStyle;rounded=0;strokeWidth=2;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" target="lg_init">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e_disp_lg_lbl" connectable="0" parent="e_disp_lg" style="edgeLabel;html=1;align=center;verticalAlign=middle;resizable=0;points=[];fontSize=10;fontStyle=1;" value="POST /investigate&lt;br&gt;{ticket_id}" vertex="1">
+          <mxGeometry relative="1" x="-0.1" y="-1" as="geometry">
+            <mxPoint as="offset" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="e_hitl_lg" edge="1" parent="1" source="go_hitl" style="edgeStyle=orthogonalEdgeStyle;rounded=0;dashed=1;strokeColor=#9673a6;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=1;entryY=0;entryDx=0;entryDy=0;" target="lg_hitl_decision">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e_hitl_lg_lbl" connectable="0" parent="e_hitl_lg" style="edgeLabel;html=1;align=center;verticalAlign=middle;resizable=0;points=[];fontSize=9;fontColor=#9673a6;" value="POST /investigate/{id}/approve or /reject&lt;br&gt;(resumes paused workflow)" vertex="1">
+          <mxGeometry relative="1" x="-0.3" y="10" as="geometry">
+            <mxPoint x="-10" y="-5" as="offset" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="e_lg_hitl_reg" edge="1" parent="1" source="lg_hitl" style="edgeStyle=orthogonalEdgeStyle;rounded=0;dashed=1;strokeColor=#9673a6;exitX=0;exitY=0.5;exitDx=0;exitDy=0;entryX=0.5;entryY=1;entryDx=0;entryDy=0;" target="go_hitl">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="170" y="939" />
+              <mxPoint x="170" y="650" />
+              <mxPoint x="690" y="650" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="e_lg_hitl_reg_lbl" connectable="0" parent="e_lg_hitl_reg" style="edgeLabel;html=1;align=center;verticalAlign=middle;resizable=0;points=[];fontSize=9;fontColor=#9673a6;" value="POST /hitl/pending&lt;br&gt;(register for monitoring)" vertex="1">
+          <mxGeometry relative="1" x="0.2" y="-10" as="geometry">
+            <mxPoint x="-329" y="240" as="offset" />
+          </mxGeometry>
+        </mxCell>
+        <!-- ========== NEW: External Systems ========== -->
+        <!-- Jenkins Server (external) -->
+        <mxCell id="jenkins_server" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontStyle=1;fontSize=13;" value="Jenkins Server" vertex="1">
+          <mxGeometry height="45" width="160" x="570" y="30" as="geometry" />
+        </mxCell>
+        <!-- vLLM Service (infrastructure) -->
+        <mxCell id="vllm_service" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#666666;fontStyle=1;fontSize=12;" value="vLLM Service&lt;br&gt;&lt;font style=&quot;font-size:10px&quot;&gt;Llama 3.1 70B on Habana Gaudi&lt;br&gt;OpenAI-compatible API :8000&lt;/font&gt;" vertex="1">
+          <mxGeometry height="55" width="220" x="1050" y="170" as="geometry" />
+        </mxCell>
+
+        <!-- ========== NEW: Go Monolith Components ========== -->
+        <!-- Jenkins MCP Server (in Go swimlane) -->
+        <mxCell id="go_mcp_jenkins" parent="go_sw" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;" value="&lt;b&gt;MCP Jenkins Server&lt;/b&gt;&lt;br&gt;&lt;font style=&quot;font-size:10px&quot;&gt;/mcp/jenkins (optional)&lt;/font&gt;" vertex="1">
+          <mxGeometry height="45" width="180" x="450" y="115" as="geometry" />
+        </mxCell>
+        <!-- Transition Handlers (in Go swimlane) -->
+        <mxCell id="go_transitions" parent="go_sw" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;" value="Transition Handlers&lt;br&gt;&lt;font style=&quot;font-size:10px&quot;&gt;/api/transition/{id}/in-progress|in-review&lt;/font&gt;" vertex="1">
+          <mxGeometry height="45" width="210" x="670" y="115" as="geometry" />
+        </mxCell>
+
+        <!-- ========== NEW: LangGraph Workflow Nodes ========== -->
+        <!-- investigate_jenkins (optional node, placed right of main flow) -->
+        <mxCell id="lg_jenkins" parent="lg_sw" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;dashed=1;" value="investigate_jenkins" vertex="1">
+          <mxGeometry height="35" width="155" x="480" y="263" as="geometry" />
+        </mxCell>
+        <!-- JenkinsInvestigator label -->
+        <mxCell id="lbl_ji" parent="lg_sw" style="text;html=1;strokeColor=none;fillColor=none;align=left;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontSize=10;fontStyle=2;fontColor=#9673a6;" value="JenkinsInvestigator&lt;br&gt;&lt;font color=&quot;#d6b656&quot;&gt;(Optional, LLM classify)&lt;/font&gt;" vertex="1">
+          <mxGeometry height="35" width="160" x="640" y="257" as="geometry" />
+        </mxCell>
+        <!-- synthesize_from_context (fallback node) -->
+        <mxCell id="lg_synth" parent="lg_sw" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#666666;" value="synthesize_from_context&lt;br&gt;&lt;font style=&quot;font-size:9px&quot;&gt;(no K8s resources, uses history + Jenkins)&lt;/font&gt;" vertex="1">
+          <mxGeometry height="42" width="210" x="560" y="178" as="geometry" />
+        </mxCell>
+        <!-- skip_investigation_no_namespace -->
+        <mxCell id="lg_skip_ns" parent="lg_sw" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#666666;" value="skip_investigation_no_namespace&lt;br&gt;&lt;font style=&quot;font-size:9px&quot;&gt;(posts error → END)&lt;/font&gt;" vertex="1">
+          <mxGeometry height="35" width="215" x="560" y="135" as="geometry" />
+        </mxCell>
+        <!-- Checkpoint persistence note -->
+        <mxCell id="checkpoint_note" parent="lg_sw" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#666666;fontSize=10;" value="&lt;b&gt;Checkpoint Persistence&lt;/b&gt;&lt;br&gt;K8s ConfigMap-backed state&lt;br&gt;(survives restarts, enables HITL resume)" vertex="1">
+          <mxGeometry height="50" width="220" x="650" y="860" as="geometry" />
+        </mxCell>
+
+        <!-- ========== NEW: Edges for Jenkins ========== -->
+        <!-- Jenkins MCP → Jenkins Server (dashed) -->
+        <mxCell id="e_mcpj_jenkins" edge="1" parent="1" source="go_mcp_jenkins" style="edgeStyle=orthogonalEdgeStyle;rounded=0;dashed=1;exitX=0.5;exitY=0;exitDx=0;exitDy=0;entryX=0.5;entryY=1;entryDx=0;entryDy=0;" target="jenkins_server">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e_mcpj_jenkins_lbl" connectable="0" parent="e_mcpj_jenkins" style="edgeLabel;html=1;align=center;verticalAlign=middle;resizable=0;points=[];fontSize=9;" value="Jenkins REST API" vertex="1">
+          <mxGeometry relative="1" x="-0.1" y="1" as="geometry">
+            <mxPoint as="offset" />
+          </mxGeometry>
+        </mxCell>
+        <!-- Transition Handlers → Jira (dashed) -->
+        <mxCell id="e_trans_jira" edge="1" parent="1" source="go_transitions" style="edgeStyle=orthogonalEdgeStyle;rounded=0;dashed=1;exitX=0;exitY=0;exitDx=0;exitDy=0;entryX=1;entryY=1;entryDx=0;entryDy=0;" target="jira_cloud">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e_trans_jira_lbl" connectable="0" parent="e_trans_jira" style="edgeLabel;html=1;align=center;verticalAlign=middle;resizable=0;points=[];fontSize=9;" value="Transition status" vertex="1">
+          <mxGeometry relative="1" x="-0.1" y="1" as="geometry">
+            <mxPoint as="offset" />
+          </mxGeometry>
+        </mxCell>
+
+        <!-- ========== NEW: Edges for LangGraph Jenkins node ========== -->
+        <!-- validation → investigate_jenkins (dashed, optional) -->
+        <mxCell id="e_valid_jenkins" edge="1" parent="lg_sw" source="lg_valid" style="edgeStyle=orthogonalEdgeStyle;rounded=0;dashed=1;exitX=1;exitY=1;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" target="lg_jenkins">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e_valid_jenkins_lbl" connectable="0" parent="e_valid_jenkins" style="edgeLabel;html=1;align=center;verticalAlign=middle;resizable=0;points=[];fontSize=9;fontColor=#9673a6;" value="Jenkins&lt;br&gt;URLs?" vertex="1">
+          <mxGeometry relative="1" x="-0.2" y="-1" as="geometry">
+            <mxPoint as="offset" />
+          </mxGeometry>
+        </mxCell>
+        <!-- investigate_jenkins → investigate_cluster -->
+        <mxCell id="e_jenkins_invest" edge="1" parent="lg_sw" source="lg_jenkins" style="edgeStyle=orthogonalEdgeStyle;rounded=0;entryX=1;entryY=0.5;entryDx=0;entryDy=0;" target="lg_invest">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <!-- ========== NEW: Edges for fallback paths ========== -->
+        <!-- validation → synthesize_from_context -->
+        <mxCell id="e_valid_synth" edge="1" parent="lg_sw" source="lg_valid" style="edgeStyle=orthogonalEdgeStyle;rounded=0;dashed=1;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" target="lg_synth">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e_valid_synth_lbl" connectable="0" parent="e_valid_synth" style="edgeLabel;html=1;align=center;verticalAlign=middle;resizable=0;points=[];fontSize=9;" value="No K8s resources&lt;br&gt;(has context)" vertex="1">
+          <mxGeometry relative="1" x="-0.2" y="-1" as="geometry">
+            <mxPoint as="offset" />
+          </mxGeometry>
+        </mxCell>
+        <!-- synthesize_from_context → post_comment -->
+        <mxCell id="e_synth_post" edge="1" parent="lg_sw" source="lg_synth" style="edgeStyle=orthogonalEdgeStyle;rounded=0;dashed=1;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=1;entryY=0;entryDx=0;entryDy=0;" target="lg_post">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="665" y="1040" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <!-- validation → skip_investigation_no_namespace -->
+        <mxCell id="e_valid_skip" edge="1" parent="lg_sw" source="lg_valid" style="edgeStyle=orthogonalEdgeStyle;rounded=0;dashed=1;exitX=1;exitY=0;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" target="lg_skip_ns">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e_valid_skip_lbl" connectable="0" parent="e_valid_skip" style="edgeLabel;html=1;align=center;verticalAlign=middle;resizable=0;points=[];fontSize=9;" value="No namespace" vertex="1">
+          <mxGeometry relative="1" x="-0.2" y="-1" as="geometry">
+            <mxPoint as="offset" />
+          </mxGeometry>
+        </mxCell>
+
+        <!-- ========== NEW: vLLM connection ========== -->
+        <mxCell id="e_lg_vllm" edge="1" parent="1" source="lg_sw" style="edgeStyle=orthogonalEdgeStyle;rounded=0;dashed=1;strokeColor=#666666;exitX=1;exitY=0;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" target="vllm_service">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e_lg_vllm_lbl" connectable="0" parent="e_lg_vllm" style="edgeLabel;html=1;align=center;verticalAlign=middle;resizable=0;points=[];fontSize=9;fontColor=#666666;" value="LLM inference&lt;br&gt;(all agents)" vertex="1">
+          <mxGeometry relative="1" x="-0.2" y="-1" as="geometry">
+            <mxPoint as="offset" />
+          </mxGeometry>
+        </mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>

@@ -1,0 +1,12 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+  - deployment.yaml
+  - rbac.yaml
+  - rbac-locks.yaml
+
+images:
+  - name: langgraph-agent-image
+    newName: artifactory-kfs.habana-labs.com/docker-developers/users/anoah/langgraph-agent-api
+    newTag: "1.0.0"
