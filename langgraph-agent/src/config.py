@@ -33,7 +33,7 @@ class Settings(BaseSettings):
 
     # Triage config
     team_members: list[str] = Field(
-        default=["dweinsto", "davidtal", "gennadyd"],
+        default=[],
         alias="TEAM_MEMBERS",
     )
     processed_label: str = Field(

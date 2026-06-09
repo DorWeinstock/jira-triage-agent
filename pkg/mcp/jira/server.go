@@ -301,7 +301,7 @@ func registerUpdateAssigneeTool(server *mcp.Server, client *Client) {
 		server,
 		&mcp.Tool{
 			Name:        "update_assignee",
-			Description: "Assign a Jira ticket to a user. On self-hosted Jira, use the username (e.g. dweinsto).",
+			Description: "Assign a Jira ticket to a user. On self-hosted Jira, use the Jira username.",
 		},
 		func(ctx context.Context, _ *mcp.CallToolRequest, input struct {
 			TicketID string `json:"ticket_id" jsonschema:"The Jira ticket ID (e.g., PROJ-123)"`

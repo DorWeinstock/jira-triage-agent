@@ -330,7 +330,7 @@ class JiraTools(BaseMCPClient):
 
         Args:
             ticket_id: Jira ticket ID (e.g., GAUDISW-123)
-            username: Jira username to assign to (e.g., dweinsto)
+            username: Jira username to assign to (e.g., jdoe)
 
         Returns:
             Dictionary with success status.
