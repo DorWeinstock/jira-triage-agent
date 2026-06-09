@@ -1,6 +1,6 @@
 # Jira Triage Agent
 
-An automated triage system for AI-generated Jira tickets. It polls Jira for tickets labelled `ai-generated`, uses an LLM to classify them as spam or actionable, then either reassigns spam back to the reporter with a polite comment or routes valid tickets to team members via round-robin.
+An automated triage system for AI-generated Jira tickets. It polls Jira every hour for tickets labelled `ai-generated`, uses an LLM to classify them as spam or actionable, then either reassigns spam back to the reporter with a polite comment or routes valid tickets to team members via round-robin.
 
 ## What It Does
 
@@ -74,7 +74,7 @@ TEAM_MEMBERS: "dweinsto,davidtal,gennadyd"
 PROCESSED_LABEL: "triage-agent-done"
 
 # Polling
-POLLING_INTERVAL: "5m"
+POLLING_INTERVAL: "1h"
 MAX_CONCURRENT_DISPATCHES: "5"
 
 # LLM
