@@ -17,7 +17,7 @@ data:
   PROCESSED_LABEL: "triage-agent-done"
 
   # ── Polling ───────────────────────────────────────────────────
-  POLLING_INTERVAL: "5m"
+  POLLING_INTERVAL: "1h"
   MAX_CONCURRENT_DISPATCHES: "5"
 
   # ── LLM (vLLM/Gaudi) ─────────────────────────────────────────
