@@ -37,12 +37,12 @@ spec:
         # Agents may override per-prompt with /no_think or /think.
         - "--chat-template-kwargs={\"enable_thinking\": false}"
         env:
+        - name: HABANA_VISIBLE_DEVICES
+          value: "all"
         - name: OMPI_MCA_btl_vader_single_copy_mechanism
           value: "none"
         - name: VLLM_WORKER_MULTIPROC_METHOD
           value: "spawn"
-        - name: PT_HPU_ENABLE_LAZY_COLLECTIVES
-          value: "true"
         - name: HF_TOKEN
           valueFrom:
             secretKeyRef:
