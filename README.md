@@ -8,7 +8,7 @@ An automated triage system for AI-generated Jira tickets. It polls Jira every ho
 Jira ticket with label "ai-generated"
           │
           ▼
-  jira-agent (Go) polls every 5m
+  jira-agent (Go) polls every 1h
           │
           ▼
   LangGraph triage workflow (Python)
@@ -70,7 +70,7 @@ FILTER_COMPONENT: "DevOps_K8S"
 FILTER_ISSUE_TYPE: ""          # empty = Bug + Task
 
 # Triage team — round-robin assignment
-TEAM_MEMBERS: "dweinsto,davidtal,gennadyd"
+TEAM_MEMBERS: "user1,user2,user3"
 PROCESSED_LABEL: "triage-agent-done"
 
 # Polling
@@ -104,7 +104,7 @@ images:
 ```yaml
 images:
   - name: jira-triage-agent
-    newName: artifactory-kfs.habana-labs.com/docker-developers/users/dweinsto/jira-triage-agent
+    newName: <your-registry>/jira-triage-agent
     newTag: "latest"       # ← change this
 ```
 
@@ -112,7 +112,7 @@ images:
 ```yaml
 images:
   - name: jira-triage-langgraph
-    newName: artifactory-kfs.habana-labs.com/docker-developers/users/dweinsto/jira-triage-langgraph
+    newName: <your-registry>/jira-triage-langgraph
     newTag: "latest"       # ← change this
 ```
 
@@ -156,12 +156,12 @@ Optional keys in the same secret:
 ```bash
 # Go monolith
 make build
-docker push artifactory-kfs.habana-labs.com/docker-developers/users/dweinsto/jira-triage-agent:latest
+docker push <your-registry>/jira-triage-agent:latest
 
 # Python agent
 cd langgraph-agent
-docker build -t artifactory-kfs.habana-labs.com/docker-developers/users/dweinsto/jira-triage-langgraph:latest .
-docker push artifactory-kfs.habana-labs.com/docker-developers/users/dweinsto/jira-triage-langgraph:latest
+docker build -t <your-registry>/jira-triage-langgraph:latest .
+docker push <your-registry>/jira-triage-langgraph:latest
 ```
 
 ### 3. Deploy
