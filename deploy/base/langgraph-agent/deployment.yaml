@@ -18,31 +18,20 @@ spec:
       serviceAccountName: langgraph-agent-sa
       containers:
       - name: langgraph-agent
-        image: artifactory-kfs.habana-labs.com/docker-developers/users/dweinsto/jira-triage-langgraph:latest
+        image: jira-triage-langgraph  # resolved by kustomize images: in kustomization.yaml
         imagePullPolicy: Always
         ports:
         - containerPort: 8000
           name: http
+        envFrom:
+        - configMapRef:
+            name: triage-config   # Jira filters, team, LLM config, LangSmith
         env:
         - name: PORT
           value: "8000"
         - name: JIRA_MCP_ENDPOINT
           value: "http://jira-agent:8080/mcp/jira"
-        # LLM configuration (Qwen3-Next-80B on vLLM/Gaudi)
-        - name: VLLM_ENDPOINT
-          value: "http://vllm-service:8000/v1"
-        - name: VLLM_MODEL_NAME
-          value: "Qwen/Qwen3.6-27B-FP8"
-        # Triage team
-        - name: TEAM_MEMBERS
-          value: "dweinsto,davidtal,gennadyd"
-        - name: PROCESSED_LABEL
-          value: "triage-agent-done"
-        # LangSmith observability (optional — leave LANGCHAIN_API_KEY empty to disable)
-        - name: LANGCHAIN_TRACING_V2
-          value: "false"
-        - name: LANGCHAIN_PROJECT
-          value: "jira-triage-agent"
+        # LangSmith API key (optional — tracing disabled if absent)
         - name: LANGCHAIN_API_KEY
           valueFrom:
             secretKeyRef:

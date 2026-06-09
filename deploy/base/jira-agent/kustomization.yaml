@@ -8,3 +8,10 @@ resources:
   - proxy-configmap.yaml
   - externalsecret.yaml
   - externalsecret-kubeconfigs.yaml
+
+# ── Image management ──────────────────────────────────────────────────────────
+# Change newTag (or newName) here to update the jira-agent image.
+images:
+  - name: jira-triage-agent
+    newName: artifactory-kfs.habana-labs.com/docker-developers/users/dweinsto/jira-triage-agent
+    newTag: "latest"

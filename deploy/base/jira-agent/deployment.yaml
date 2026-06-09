@@ -18,15 +18,24 @@ spec:
       serviceAccountName: jira-agent-sa
       containers:
       - name: jira-agent
-        image: artifactory-kfs.habana-labs.com/docker-developers/users/dweinsto/jira-triage-agent:latest
+        image: jira-triage-agent  # resolved by kustomize images: in kustomization.yaml
         imagePullPolicy: Always
         ports:
         - containerPort: 8080
           name: http
+        envFrom:
+        - configMapRef:
+            name: triage-config   # Jira filters, team, polling, LLM config
         env:
         - name: PORT
           value: "8080"
-        # Jira configuration (self-hosted — PAT Bearer token auth)
+        - name: AGENT_URL
+          value: "http://langgraph-agent-service:8000"
+        - name: LOG_FORMAT
+          value: "json"
+        - name: LOG_LEVEL
+          value: "info"
+        # Jira credentials (self-hosted — PAT Bearer token auth)
         - name: JIRA_URL
           valueFrom:
             secretKeyRef:
@@ -37,22 +46,6 @@ spec:
             secretKeyRef:
               name: jira-triage-agent-secret
               key: jira-pat
-        # Triage configuration
-        - name: FILTER_PROJECT
-          value: "GAUDISW"
-        - name: FILTER_COMPONENT
-          value: "DevOps_K8S"
-        - name: TEAM_MEMBERS
-          value: "dweinsto,davidtal,gennadyd"
-        - name: PROCESSED_LABEL
-          value: "triage-agent-done"
-        - name: POLLING_INTERVAL
-          value: "5m"
-        - name: MAX_CONCURRENT_DISPATCHES
-          value: "5"
-        # Langgraph triage agent
-        - name: AGENT_URL
-          value: "http://langgraph-agent-service:8000"
         # Proxy
         - name: HTTP_PROXY
           valueFrom:
@@ -72,10 +65,6 @@ spec:
               name: proxy-config
               key: NO_PROXY
               optional: true
-        - name: LOG_FORMAT
-          value: "json"
-        - name: LOG_LEVEL
-          value: "info"
         resources:
           limits:
             memory: 256Mi

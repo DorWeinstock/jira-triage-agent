@@ -6,3 +6,12 @@ namespace: jira-k8s-agent
 resources:
 - vllm-deployment.yaml
 - vllm-service.yaml
+
+# ── Image management ──────────────────────────────────────────────────────────
+# Change newTag here to update the vLLM image (pick latest from Artifactory UI).
+# Registry: artifactory-kfs.iil.labsad.intel.com/docker-developers/users/qauser/
+#           vllm_pytorch_synapse_nightly/1.24.1/ubuntu24.04/vllm-main/ptfork-2.12.0
+images:
+  - name: vllm-gaudi
+    newName: artifactory-kfs.iil.labsad.intel.com/docker-developers/users/qauser/vllm_pytorch_synapse_nightly/1.24.1/ubuntu24.04/vllm-main/ptfork-2.12.0
+    newTag: "1.24.1_396"

@@ -3,6 +3,7 @@ kind: Kustomization
 
 resources:
   - namespace.yaml
+  - triage-config.yaml
   - jira-agent
   - langgraph-agent
   - llm-serving

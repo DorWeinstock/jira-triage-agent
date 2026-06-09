@@ -6,7 +6,9 @@ resources:
   - rbac.yaml
   - rbac-locks.yaml
 
+# ── Image management ──────────────────────────────────────────────────────────
+# Change newTag (or newName) here to update the langgraph-agent image.
 images:
-  - name: langgraph-agent-image
-    newName: artifactory-kfs.habana-labs.com/docker-developers/users/anoah/langgraph-agent-api
-    newTag: "1.0.0"
+  - name: jira-triage-langgraph
+    newName: artifactory-kfs.habana-labs.com/docker-developers/users/dweinsto/jira-triage-langgraph
+    newTag: "latest"

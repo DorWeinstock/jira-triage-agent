@@ -24,10 +24,10 @@ spec:
       - name: vllm
         # Verified image from internal registry (SynapseAI 1.24.0, vLLM-gaudi plugin).
         # Qwen3.6-27B-FP8 (~27GB weights) fits comfortably on a single Gaudi card.
-        image: artifactory-kfs.iil.labsad.intel.com/docker-developers/users/qauser/vllm_pytorch_synapse_nightly/1.24.1/ubuntu24.04/vllm-main/ptfork-2.12.0:1.24.1_396
+        image: vllm-gaudi  # resolved by kustomize images: in kustomization.yaml
         command: ["python3", "-m", "vllm.entrypoints.openai.api_server"]
         args:
-        - "--model=Qwen/Qwen3.6-27B-FP8"
+        - "--model=$(VLLM_MODEL_NAME)"  # value comes from triage-config ConfigMap
         - "--tensor-parallel-size=1"
         - "--block-size=128"
         - "--max-model-len=8192"
@@ -36,6 +36,10 @@ spec:
         # Disable chain-of-thought reasoning by default for faster triage evaluation.
         # Agents may override per-prompt with /no_think or /think.
         - "--chat-template-kwargs={\"enable_thinking\": false}"
+        env:
+        envFrom:
+        - configMapRef:
+            name: triage-config   # provides VLLM_MODEL_NAME for the --model= arg
         env:
         - name: HABANA_VISIBLE_DEVICES
           value: "all"

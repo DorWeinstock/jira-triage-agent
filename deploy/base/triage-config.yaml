@@ -1,0 +1,31 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: triage-config
+  namespace: jira-k8s-agent
+data:
+  # ── Jira filters ──────────────────────────────────────────────
+  # Which tickets to pick up for triage
+  FILTER_PROJECT: "GAUDISW"
+  FILTER_COMPONENT: "DevOps_K8S"
+  FILTER_ISSUE_TYPE: ""          # leave empty for Bug+Task (default)
+
+  # ── Triage team ───────────────────────────────────────────────
+  # Comma-separated usernames for round-robin assignment of valid tickets
+  TEAM_MEMBERS: "dweinsto,davidtal,gennadyd"
+  # Label stamped on every ticket after triage (spam or valid)
+  PROCESSED_LABEL: "triage-agent-done"
+
+  # ── Polling ───────────────────────────────────────────────────
+  POLLING_INTERVAL: "5m"
+  MAX_CONCURRENT_DISPATCHES: "5"
+
+  # ── LLM (vLLM/Gaudi) ─────────────────────────────────────────
+  # Must match --model= arg in the vllm-deployment.yaml
+  VLLM_ENDPOINT: "http://vllm-service:8000/v1"
+  VLLM_MODEL_NAME: "Qwen/Qwen3.6-27B-FP8"
+
+  # ── LangSmith observability ───────────────────────────────────
+  # Set LANGCHAIN_API_KEY in the secret to enable tracing
+  LANGCHAIN_TRACING_V2: "false"
+  LANGCHAIN_PROJECT: "jira-triage-agent"
