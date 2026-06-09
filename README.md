@@ -223,7 +223,3 @@ jira-triage-agent/
 ```bash
 go test ./pkg/... ./cmd/...
 ```
-
-## License
-
-See [LICENSE](./LICENSE).
