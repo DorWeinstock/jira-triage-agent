@@ -78,7 +78,7 @@ POLLING_INTERVAL: "1h"
 MAX_CONCURRENT_DISPATCHES: "5"
 
 # LLM
-VLLM_MODEL_NAME: "Qwen/Qwen3.6-27B-FP8"
+VLLM_MODEL_NAME: "Qwen/Qwen3-30B-A3B-Instruct-2507"
 VLLM_ENDPOINT: "http://vllm-service:8000/v1"
 
 # LangSmith observability (set LANGCHAIN_API_KEY in secret to enable)
@@ -121,16 +121,16 @@ images:
 
 ## LLM
 
-**Current model**: [`Qwen/Qwen3.6-27B-FP8`](https://hf.co/Qwen/Qwen3.6-27B-FP8)
+**Current model**: [`Qwen/Qwen3-30B-A3B-Instruct-2507`](https://hf.co/Qwen/Qwen3-30B-A3B-Instruct-2507)
 
 | Property | Value |
 |---|---|
-| Architecture | Dense |
-| Parameters | 27B (all active) |
-| Quantization | FP8 (~27GB weights) |
-| Gaudi cards required | 1 |
+| Architecture | MoE (Mixture of Experts) |
+| Total parameters | 30B |
+| Active parameters | ~3B per token |
+| Gaudi cards required | 1–2 |
 | Origin | Alibaba (open-source, Apache 2.0) |
-| Released | April 2026 |
+| Released | July 2025 |
 
 Runs on **Intel Gaudi** via the vLLM Gaudi hardware plugin (`vllm-gaudi`). The `/no_think` directive is set in the system prompt to suppress chain-of-thought reasoning for faster triage inference.
 
