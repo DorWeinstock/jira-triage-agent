@@ -23,13 +23,12 @@ spec:
       containers:
       - name: vllm
         # Verified image from internal registry (SynapseAI 1.24.0, vLLM-gaudi plugin).
-        # Uses 2 Gaudi cards via tensor-parallel-size=2 to fit Qwen3-Next-80B-FP8
-        # (~80GB weights) with headroom for KV cache.
+        # Qwen3.6-27B-FP8 (~27GB weights) fits comfortably on a single Gaudi card.
         image: artifactory-kfs.habana-labs.com/docker-developers/vllm/1.24.0/ubuntu22.04/habanalabs/external/vllm-plugin-2.9.1:1.24.0-481
         command: ["python3", "-m", "vllm.entrypoints.openai.api_server"]
         args:
-        - "--model=Qwen/Qwen3-Next-80B-A3B-Instruct-FP8"
-        - "--tensor-parallel-size=2"
+        - "--model=Qwen/Qwen3.6-27B-FP8"
+        - "--tensor-parallel-size=1"
         - "--block-size=128"
         - "--max-model-len=8192"
         - "--port=8000"
@@ -72,15 +71,15 @@ spec:
               optional: true
         resources:
           limits:
-            habana.ai/gaudi: "2"
-            hugepages-2Mi: "5000Mi"
-            memory: "200Gi"
-            cpu: "40"
-          requests:
-            habana.ai/gaudi: "2"
-            hugepages-2Mi: "5000Mi"
-            memory: "150Gi"
+            habana.ai/gaudi: "1"
+            hugepages-2Mi: "2500Mi"
+            memory: "100Gi"
             cpu: "20"
+          requests:
+            habana.ai/gaudi: "1"
+            hugepages-2Mi: "2500Mi"
+            memory: "60Gi"
+            cpu: "10"
         securityContext:
           capabilities:
             add: ["SYS_NICE", "IPC_LOCK"]
