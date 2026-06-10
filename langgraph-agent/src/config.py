@@ -18,7 +18,7 @@ class Settings(BaseSettings):
         alias="VLLM_ENDPOINT",
     )
     vllm_model_name: str = Field(
-        default="Qwen/Qwen3-30B-A3B-Instruct-2507",
+        default="",
         alias="VLLM_MODEL_NAME",
     )
     temperature_default: float = 0.3
