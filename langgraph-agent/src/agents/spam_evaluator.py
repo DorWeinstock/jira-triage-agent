@@ -13,9 +13,10 @@ from ..state import AgentState
 logger = logging.getLogger(__name__)
 
 # Prompt instructs the LLM to return structured JSON without chain-of-thought.
-# /no_think suppresses Qwen3 reasoning tokens for faster, cheaper inference.
-_SYSTEM_PROMPT = """/no_think
-You are a DevOps triage assistant that evaluates Jira tickets for the DevOps_K8S team.
+# Reasoning is disabled via chat_template_kwargs(enable_thinking=False) in
+# config.create_llm — the prompt-level `/no_think` directive is ignored by Qwen3.6
+# on the vLLM-Gaudi build (verified), so it's removed here to avoid confusion.
+_SYSTEM_PROMPT = """You are a DevOps triage assistant that evaluates Jira tickets for the DevOps_K8S team.
 Your job is to decide whether a ticket is actionable (valid) or should be returned to the reporter (spam).
 
 SPAM rules — a ticket is spam if ANY of these are true:

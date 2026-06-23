@@ -3,7 +3,7 @@
 import logging
 from functools import lru_cache
 
-from pydantic import Field
+from pydantic import Field, computed_field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 logger = logging.getLogger(__name__)
@@ -31,11 +31,13 @@ class Settings(BaseSettings):
         alias="JIRA_MCP_ENDPOINT",
     )
 
-    # Triage config
-    team_members: list[str] = Field(
-        default=[],
-        alias="TEAM_MEMBERS",
-    )
+    # Triage config — stored as raw CSV string, exposed as list via computed_field
+    team_members_raw: str = Field(default="", alias="TEAM_MEMBERS")
+
+    @computed_field
+    @property
+    def team_members(self) -> list[str]:
+        return [m.strip() for m in self.team_members_raw.split(",") if m.strip()]
     processed_label: str = Field(
         default="triage-agent-done",
         alias="PROCESSED_LABEL",
@@ -78,6 +80,11 @@ def create_llm(temperature: float | None = None):
         temperature=temp,
         max_tokens=settings.max_tokens,
         max_completion_tokens=None,
+        # Disable Qwen3 chain-of-thought. The prompt-level `/no_think` directive is
+        # IGNORED by Qwen3.6 on the vLLM-Gaudi build (verified: it still emits a
+        # <think> block). The working switch is chat_template_kwargs in the request
+        # body, which yields a clean answer (e.g. just "ACTIONABLE", 3 tokens).
+        extra_body={"chat_template_kwargs": {"enable_thinking": False}},
     )
 
 

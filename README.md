@@ -132,7 +132,7 @@ images:
 | Origin | Alibaba (open-source, Apache 2.0) |
 | Released | April 2026 |
 
-Runs on **Intel Gaudi** via the vLLM Gaudi hardware plugin (`vllm-gaudi`). The `/no_think` directive is set in the system prompt to suppress chain-of-thought reasoning for faster triage inference.
+Runs on **Intel Gaudi** via the vLLM Gaudi hardware plugin (`vllm-gaudi`). Chain-of-thought reasoning is disabled for faster triage inference by passing `chat_template_kwargs={"enable_thinking": false}` on each request (the prompt-level `/no_think` directive is ignored by Qwen3.6 on this build).
 
 ## Deployment
 
