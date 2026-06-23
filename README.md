@@ -141,7 +141,7 @@ Runs on **Intel Gaudi** via the vLLM Gaudi hardware plugin (`vllm-gaudi`). The `
 ```bash
 kubectl create secret generic jira-triage-agent-secret \
   --from-literal=jira-url=https://jira.devtools.intel.com \
-  --from-literal=jira-pat=<your-jira-pat> \
+  --from-literal=jira-api-token=<your-jira-api-token> \
   -n jira-k8s-agent
 ```
 

@@ -41,11 +41,11 @@ spec:
             secretKeyRef:
               name: jira-triage-agent-secret
               key: jira-url
-        - name: JIRA_PAT
+        - name: JIRA_API_TOKEN
           valueFrom:
             secretKeyRef:
               name: jira-triage-agent-secret
-              key: jira-pat
+              key: jira-api-token
         # Proxy
         - name: HTTP_PROXY
           valueFrom:
