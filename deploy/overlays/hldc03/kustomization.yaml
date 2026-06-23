@@ -3,7 +3,6 @@ kind: Kustomization
 
 resources:
   - ../../base
-  - namespace.yaml
 
 namespace: jira-triage-agent
 
@@ -16,13 +15,11 @@ images:
   - name: jira-triage-langgraph
     newName: artifactory-kfs.habana-labs.com/docker-developers/users/dweinsto/jira-triage-langgraph
     newTag: "latest"
-  - name: vllm-gaudi
-    newName: artifactory-kfs.iil.labsad.intel.com/docker-developers/users/qauser/vllm_pytorch_synapse_nightly/1.24.1/ubuntu24.04/vllm-main/ptfork-2.12.0
-    newTag: "1.24.1_396"
 
 # ── Patches ───────────────────────────────────────────────────────────────────
 patches:
-  # Pin vLLM pod to Gaudi 3 nodes
+  # Restrict vLLM to schedulable Gaudi 3 nodes (any such node works — the
+  # habana.ai/* labels on the pod let the device plugin allocate a card there).
   - target:
       kind: Deployment
       name: vllm-qwen3
@@ -30,4 +27,5 @@ patches:
       - op: add
         path: /spec/template/spec/nodeSelector
         value:
-          habana.ai/gaudi_type: GAUDI3
+          habana.ai/device-type: gaudi3
+          habana.ai/schedulable: "true"

@@ -38,11 +38,12 @@ spec:
               name: jira-triage-agent-secret
               key: langchain-api-key
               optional: true
-        # Proxy (needed for HuggingFace model download on first run)
+        # Proxy (trailing dot = absolute FQDN, avoids ndots:5 search-domain
+        # resolution failures on hldc03 — see proxy-config ConfigMap).
         - name: HTTP_PROXY
-          value: "http://proxy-dmz.intel.com:912"
+          value: "http://proxy-dmz.intel.com.:912"
         - name: HTTPS_PROXY
-          value: "http://proxy-dmz.intel.com:912"
+          value: "http://proxy-dmz.intel.com.:912"
         - name: NO_PROXY
           value: "10.96.0.1,10.233.0.1,kubernetes,kubernetes.default,kubernetes.default.svc,kubernetes.default.svc.cluster.local,10.0.0.0/8,habana-labs.com,.habana-labs.com,intel.com,.intel.com,127.0.0.1,localhost,jira-agent,vllm-service,.svc,.svc.cluster.local"
         - name: no_proxy

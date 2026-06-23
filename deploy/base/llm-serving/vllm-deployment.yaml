@@ -15,11 +15,17 @@ spec:
     metadata:
       labels:
         app: vllm-qwen3
+        # These labels make the pod visible+valid to hldc03's internal-device-plugin
+        # so it can allocate a Gaudi card. Without habana.ai/user the plugin's pod
+        # scan ignores the pod entirely ("no pending pods found"); habana.ai/schedulable
+        # must be a parseable bool or extractRequestInformation rejects it.
+        habana.ai/user: jira-triage
+        habana.ai/schedulable: "true"
+        habana.ai/is-container: "true"
+      annotations:
+        with_network: "false"   # skip SR-IOV/Gaudi-network setup (single-card serving)
     spec:
-      runtimeClassName: habana
       hostIPC: true
-      hostNetwork: true
-      dnsPolicy: ClusterFirstWithHostNet
       containers:
       - name: vllm
         # Verified image from internal registry (SynapseAI 1.24.0, vLLM-gaudi plugin).
@@ -30,13 +36,12 @@ spec:
         - "--model=$(VLLM_MODEL_NAME)"  # value comes from triage-config ConfigMap
         - "--tensor-parallel-size=1"
         - "--block-size=128"
-        - "--max-model-len=8192"
+        - "--max-model-len=4096"        # triage prompts are short; smaller KV cache
+        - "--max-num-seqs=16"           # cap concurrency -> less KV cache reserved
         - "--port=8000"
-        - "--gpu-memory-utilization=0.90"
-        # Disable chain-of-thought reasoning by default for faster triage evaluation.
-        # Agents may override per-prompt with /no_think or /think.
-        - "--chat-template-kwargs={\"enable_thinking\": false}"
-        env:
+        # Leave HBM headroom: 0.90 filled KV cache to the cap, leaving no room for
+        # the post-KV-cache HPU graph buffer (2.5GB alloc failed). 0.80 fixes that.
+        - "--gpu-memory-utilization=0.80"
         envFrom:
         - configMapRef:
             name: triage-config   # provides VLLM_MODEL_NAME for the --model= arg
@@ -55,6 +60,13 @@ spec:
               optional: true   # model may already be cached
         - name: HF_HOME
           value: /root/.cache/huggingface
+        # Model is pre-staged on the weka cache -> load purely from disk, never hit
+        # the network. Avoids HF metadata requests failing through the flaky proxy
+        # ("Cannot send a request, as the client has been closed").
+        - name: HF_HUB_OFFLINE
+          value: "1"
+        - name: TRANSFORMERS_OFFLINE
+          value: "1"
         - name: HTTP_PROXY
           valueFrom:
             configMapKeyRef:
@@ -74,15 +86,18 @@ spec:
               key: NO_PROXY
               optional: true
         resources:
+          # HPU/Synapse stages model weights in hugepages; 2.5Gi was far too small
+          # for a 27B model and caused "Out of HOST memory" during weight load.
+          # QA uses ~12.5Gi hugepages per card -- give generous headroom.
           limits:
             habana.ai/gaudi: "1"
-            hugepages-2Mi: "2500Mi"
-            memory: "100Gi"
+            hugepages-2Mi: "32000Mi"
+            memory: "200Gi"
             cpu: "20"
           requests:
             habana.ai/gaudi: "1"
-            hugepages-2Mi: "2500Mi"
-            memory: "60Gi"
+            hugepages-2Mi: "32000Mi"
+            memory: "100Gi"
             cpu: "10"
         securityContext:
           capabilities:
@@ -124,7 +139,10 @@ spec:
         emptyDir:
           medium: Memory
           sizeLimit: "5Gi"
+      # HF cache lives on the SHARED weka FS (mounted on every Gaudi node), not a
+      # per-node /tmp path. The 27GB Qwen3.6-27B-FP8 model downloads once and is
+      # then available to the pod on whatever node it lands on -- no re-download.
       - name: model-cache
         hostPath:
-          path: /tmp/vllm-model-cache
+          path: /mnt/weka/llm/jira-triage-hf-cache
           type: DirectoryOrCreate

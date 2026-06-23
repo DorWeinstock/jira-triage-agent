@@ -8,10 +8,13 @@ resources:
 - vllm-service.yaml
 
 # ── Image management ──────────────────────────────────────────────────────────
-# Change newTag here to update the vLLM image (pick latest from Artifactory UI).
-# Registry: artifactory-kfs.iil.labsad.intel.com/docker-developers/users/qauser/
-#           vllm_pytorch_synapse_nightly/1.24.1/ubuntu24.04/vllm-main/ptfork-2.12.0
+# Habana vLLM NIGHTLY (vllm-main, ptfork-2.12.0) on the habana-labs registry.
+# This is the Qwen3-capable build QA uses for vLLM-on-Gaudi serving. The stable
+# vllm-plugin-2.9.1 image is too old (its Transformers can't load model type
+# `qwen3_5`). Pick the latest tag from the Artifactory UI when bumping.
 images:
   - name: vllm-gaudi
-    newName: artifactory-kfs.iil.labsad.intel.com/docker-developers/users/qauser/vllm_pytorch_synapse_nightly/1.24.1/ubuntu24.04/vllm-main/ptfork-2.12.0
-    newTag: "1.24.1_396"
+    newName: artifactory-kfs.habana-labs.com/docker-developers/users/qauser/vllm_pytorch_synapse_nightly/1.24.1/ubuntu24.04/vllm-main/ptfork-2.12.0/vllm-main-ptfork-2.12.0
+    # _437 has a prometheus-instrumentator bug that 500s every request (incl /health);
+    # the -fix-prometheus build fixes it.
+    newTag: "1.24.1_437-fix-prometheus"

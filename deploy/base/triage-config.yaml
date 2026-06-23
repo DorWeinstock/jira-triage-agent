@@ -23,7 +23,7 @@ data:
   # ── LLM (vLLM/Gaudi) ─────────────────────────────────────────
   # Must match --model= arg in the vllm-deployment.yaml
   VLLM_ENDPOINT: "http://vllm-service:8000/v1"
-  VLLM_MODEL_NAME: "Qwen/Qwen3-30B-A3B-Instruct-2507"
+  VLLM_MODEL_NAME: "Qwen/Qwen3.6-27B-FP8"
 
   # ── LangSmith observability ───────────────────────────────────
   # Set LANGCHAIN_API_KEY in the secret to enable tracing
