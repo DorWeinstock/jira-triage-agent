@@ -10,15 +10,15 @@ help: ## Display this help
 # ---------------------------------------------------------------------------
 
 # Container registry (override per-image with JIRA_AGENT_REGISTRY / AGENT_REGISTRY)
-REGISTRY ?= artifactory-kfs.habana-labs.com/docker-developers/users/anoah
+REGISTRY ?= artifactory-kfs.habana-labs.com/docker-developers/users/dweinsto
 
 JIRA_AGENT_REGISTRY ?= $(REGISTRY)
-JIRA_AGENT_IMAGE_NAME = jira-agent
+JIRA_AGENT_IMAGE_NAME = jira-triage-agent
 JIRA_AGENT_VERSION ?= 1.0.0
 JIRA_AGENT_IMAGE = $(JIRA_AGENT_REGISTRY)/$(JIRA_AGENT_IMAGE_NAME):$(JIRA_AGENT_VERSION)
 
 AGENT_REGISTRY ?= $(REGISTRY)
-AGENT_IMAGE_NAME = langgraph-agent
+AGENT_IMAGE_NAME = jira-triage-langgraph
 AGENT_VERSION ?= 1.0.0
 AGENT_IMAGE = $(AGENT_REGISTRY)/$(AGENT_IMAGE_NAME):$(AGENT_VERSION)
 
@@ -64,7 +64,7 @@ build: ## Build jira-agent Go binary
 	go build -o bin/jira-agent ./cmd/jira-agent
 
 build-jira-agent-docker: ## Build jira-agent Docker image
-	$(call docker-build,$(JIRA_AGENT_IMAGE),$(JIRA_AGENT_REGISTRY),$(JIRA_AGENT_IMAGE_NAME),..,Dockerfile)
+	$(call docker-build,$(JIRA_AGENT_IMAGE),$(JIRA_AGENT_REGISTRY),$(JIRA_AGENT_IMAGE_NAME),.,Dockerfile)
 
 build-langgraph-docker: ## Build LangGraph agent Docker image
 	cd langgraph-agent && $(call docker-build,$(AGENT_IMAGE),$(AGENT_REGISTRY),$(AGENT_IMAGE_NAME),.)
@@ -91,9 +91,11 @@ kind-load-all: kind-load-jira-agent kind-load-langgraph ## Load all images into 
 
 push-jira-agent: build-jira-agent-docker ## Push jira-agent image to registry
 	$(call docker-push,$(JIRA_AGENT_IMAGE),$(JIRA_AGENT_REGISTRY),$(JIRA_AGENT_IMAGE_NAME),$(IMAGE_TAG))
+	docker push $(JIRA_AGENT_REGISTRY)/$(JIRA_AGENT_IMAGE_NAME):latest
 
 push-langgraph: build-langgraph-docker ## Push LangGraph agent image to registry
 	$(call docker-push,$(AGENT_IMAGE),$(AGENT_REGISTRY),$(AGENT_IMAGE_NAME),$(IMAGE_TAG))
+	docker push $(AGENT_REGISTRY)/$(AGENT_IMAGE_NAME):latest
 
 push-all: push-jira-agent push-langgraph ## Push all images to registry
 
