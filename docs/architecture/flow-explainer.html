@@ -1,0 +1,524 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Jira Triage Agent — Full Flow</title>
+<style>
+  :root{
+    --bg:#0b0f19; --panel:#131826; --panel2:#0f1420; --border:#232a3d;
+    --text:#e6e9f0; --muted:#8b94a8;
+    --go:#00ADD8; --py:#4B8BBE; --llm:#a78bfa; --jira:#2684FF;
+    --ok:#22c55e; --warn:#f59e0b;
+  }
+  *{box-sizing:border-box;}
+  body{
+    margin:0; background:
+      radial-gradient(circle at 20% 0%, #17203a 0%, transparent 45%),
+      radial-gradient(circle at 80% 30%, #1a1030 0%, transparent 40%),
+      var(--bg);
+    color:var(--text); font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    line-height:1.5; padding:0 0 80px;
+  }
+  header{ text-align:center; padding:56px 20px 24px; }
+  header h1{ font-size:2.1rem; margin:0 0 8px; letter-spacing:-0.02em; }
+  header h1 span{ color:var(--go); } header h1 i{ color:var(--py); font-style:normal; }
+  header p{ color:var(--muted); max-width:660px; margin:0 auto 22px; font-size:0.95rem; }
+  .btnrow{ display:flex; gap:12px; justify-content:center; flex-wrap:wrap; }
+  button{
+    background:linear-gradient(135deg,var(--go),var(--py)); color:#04101a; border:none;
+    padding:10px 20px; border-radius:999px; font-weight:600; font-size:0.9rem; cursor:pointer;
+    box-shadow:0 6px 20px rgba(0,173,216,0.25); transition:transform .15s ease, box-shadow .15s ease;
+  }
+  button:hover{ transform:translateY(-1px); box-shadow:0 8px 26px rgba(0,173,216,0.4); }
+  button.ghost{ background:transparent; border:1px solid var(--border); color:var(--text); box-shadow:none; }
+  button.ghost:hover{ border-color:var(--muted); }
+
+  main{ max-width:940px; margin:0 auto; padding:0 20px; }
+  section{ margin-top:64px; }
+  h2{ font-size:1.3rem; margin:0 0 6px; }
+  .sub{ color:var(--muted); font-size:0.88rem; margin:0 0 28px; }
+
+  .legend{ display:flex; gap:18px; flex-wrap:wrap; font-size:0.78rem; color:var(--muted); margin-bottom:26px; }
+  .legend span{ display:inline-flex; align-items:center; gap:6px; }
+  .dot{ width:9px; height:9px; border-radius:50%; display:inline-block; }
+
+  /* ---- timeline ---- */
+  .timeline{ position:relative; padding-left:46px; }
+  .timeline::before{
+    content:""; position:absolute; left:15px; top:6px; bottom:6px; width:2px;
+    background:linear-gradient(180deg, var(--jira), var(--go) 22%, var(--go) 45%, var(--llm) 68%, var(--ok) 100%);
+    background-size:100% 300%; opacity:0.35;
+    animation:flow 3.5s linear infinite;
+  }
+  @keyframes flow{ 0%{background-position:0 0%} 100%{background-position:0 100%} }
+
+  .step{
+    position:relative; margin-bottom:14px; padding:16px 18px; background:var(--panel);
+    border:1px solid var(--border); border-radius:12px; opacity:0.35; transform:translateX(-6px);
+    transition:opacity .5s ease, transform .5s ease, border-color .4s ease, box-shadow .4s ease;
+  }
+  .step::before{
+    content:""; position:absolute; left:-38px; top:20px; width:12px; height:12px; border-radius:50%;
+    background:var(--panel2); border:2px solid var(--border); transition:all .4s ease;
+  }
+  .step.active{ opacity:1; transform:translateX(0); border-color:var(--dot,var(--go)); box-shadow:0 0 0 1px var(--dot,var(--go)) inset, 0 0 22px -6px var(--dot,var(--go)); }
+  .step.active::before{ background:var(--dot,var(--go)); border-color:var(--dot,var(--go)); box-shadow:0 0 12px 2px var(--dot,var(--go)); }
+  .step .tag{
+    display:inline-block; font-size:0.68rem; font-weight:700; letter-spacing:.05em; text-transform:uppercase;
+    padding:2px 8px; border-radius:6px; margin-bottom:8px; color:#04101a;
+  }
+  .step h3{ margin:0 0 4px; font-size:1rem; }
+  .step p.desc{ margin:0 0 10px; color:var(--muted); font-size:0.86rem; }
+  .step code{ background:#0a0e18; border:1px solid var(--border); padding:1px 6px; border-radius:5px; color:#c9d6ef; font-size:0.8rem; }
+
+  /* ---- call chain ---- */
+  .callchain{
+    background:#080b13; border:1px solid var(--border); border-radius:8px; padding:8px 10px;
+    font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace; font-size:0.74rem;
+  }
+  .hop{ display:flex; align-items:baseline; gap:7px; padding:2px 0; color:#c9d6ef; }
+  .hop .dot{ flex:0 0 auto; }
+  .hop b{ color:#f4f6fb; font-weight:600; }
+  .hop .arrow{ color:var(--muted); }
+  .hop .indent{ width:14px; flex:0 0 auto; }
+
+  .branch-wrap{ display:grid; grid-template-columns:1fr 1fr; gap:12px; margin:12px 0 0 0; }
+  .branch{
+    padding:14px 16px; border-radius:12px; border:1px dashed var(--border); background:var(--panel);
+    opacity:0.3; transition:all .3s ease; cursor:pointer;
+  }
+  .branch:hover{ opacity:0.6; border-color:var(--muted); }
+  .branch:focus-visible{ outline:2px solid var(--muted); outline-offset:2px; }
+  .branch h4{ margin:0 0 6px; font-size:0.88rem; }
+  .branch .callchain{ margin-top:4px; }
+  .branch.chosen{ opacity:1; border-style:solid; box-shadow:0 0 22px -8px currentColor; cursor:default; }
+  .branch.spam.chosen{ border-color:var(--warn); color:var(--warn); }
+  .branch.valid.chosen{ border-color:var(--ok); color:var(--ok); }
+  .branch.notchosen{ opacity:0.25; }
+  .branch.notchosen:hover{ opacity:0.5; }
+
+  .capstone p{ margin:0; color:var(--muted); font-size:0.86rem; }
+
+  /* ---- console ---- */
+  .console{
+    background:#070a12; border:1px solid var(--border); border-radius:12px; padding:16px 18px;
+    font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace; font-size:0.8rem; color:#9be59b;
+    min-height:220px; max-height:300px; overflow-y:auto;
+  }
+  .console .line{ opacity:0; transform:translateY(4px); animation:linein .4s ease forwards; margin-bottom:4px; white-space:pre-wrap;}
+  @keyframes linein{ to{opacity:1; transform:translateY(0);} }
+  .console .muted2{ color:#5b6b8c; }
+  .console .cursor{ display:inline-block; width:7px; height:14px; background:#9be59b; vertical-align:middle; animation:blink 1s step-end infinite; }
+  @keyframes blink{ 50%{opacity:0;} }
+
+  /* ---- component diagram ---- */
+  .diagram-wrap{ background:var(--panel); border:1px solid var(--border); border-radius:14px; padding:10px; }
+  .diagram-wrap svg{ width:100%; height:auto; display:block; }
+  .cbox rect{ fill:var(--panel2); stroke-width:1.6; rx:12; }
+  .cbox .title{ font-weight:700; font-size:15px; fill:#f4f6fb; }
+  .cbox .sub{ font-size:11px; fill:var(--muted); }
+  .cbox.jira rect{ stroke:var(--jira); } .cbox.jira .title{ fill:var(--jira); }
+  .cbox.go rect{ stroke:var(--go); } .cbox.go .title{ fill:var(--go); }
+  .cbox.py rect{ stroke:var(--py); } .cbox.py .title{ fill:var(--py); }
+  .cbox.llm rect{ stroke:var(--llm); } .cbox.llm .title{ fill:var(--llm); }
+  .edge path{ fill:none; stroke-width:2; stroke-dasharray:6 5; animation:dash 1.1s linear infinite; }
+  @keyframes dash{ to{ stroke-dashoffset:-22; } }
+  .edge.go path{ stroke:var(--go); } .edge.go .elabel{ fill:var(--go); }
+  .edge.py path{ stroke:var(--py); } .edge.py .elabel{ fill:var(--py); }
+  .edge.llm path{ stroke:var(--llm); } .edge.llm .elabel{ fill:var(--llm); }
+  .elabel{ font-size:11px; font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace; }
+  .enum-circle{ stroke:var(--panel); stroke-width:2; }
+  .edge.go .enum-circle{ fill:var(--go); } .edge.py .enum-circle{ fill:var(--py); } .edge.llm .enum-circle{ fill:var(--llm); }
+  .enum-num{ fill:#04101a; font-weight:800; font-size:12px; text-anchor:middle; dominant-baseline:central; font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace; }
+  .elabel.bg{ font-family:inherit; }
+  .diagram-caption{ font-size:0.82rem; color:var(--muted); margin-top:14px; }
+  .diagram-caption code{ background:#0a0e18; border:1px solid var(--border); padding:1px 6px; border-radius:5px; color:#c9d6ef; }
+
+  /* ---- role cards ---- */
+  .roles{ display:grid; grid-template-columns:1fr 1fr; gap:16px; }
+  .role{ padding:20px; border-radius:14px; border:1px solid var(--border); background:var(--panel); }
+  .role.go{ border-top:3px solid var(--go); } .role.py{ border-top:3px solid var(--py); }
+  .role h3{ margin:0 0 4px; } .role .role-sub{ color:var(--muted); font-size:0.8rem; margin-bottom:12px; }
+  .role ul{ margin:0; padding-left:18px; font-size:0.86rem; color:#cdd4e4; }
+  .role li{ margin-bottom:6px; }
+
+  /* ---- config facts ---- */
+  .facts{ display:grid; grid-template-columns:repeat(auto-fit,minmax(150px,1fr)); gap:12px; }
+  .fact{ background:var(--panel); border:1px solid var(--border); border-radius:10px; padding:12px 14px; }
+  .fact .k{ font-size:0.7rem; text-transform:uppercase; letter-spacing:.05em; color:var(--muted); margin-bottom:4px; }
+  .fact .v{ font-size:0.92rem; font-weight:600; word-break:break-word; }
+
+  footer{ text-align:center; color:var(--muted); font-size:0.78rem; margin-top:70px; }
+  @media (max-width:640px){ .roles,.branch-wrap{ grid-template-columns:1fr; } }
+</style>
+</head>
+<body>
+
+<header>
+  <h1><span>jira-agent</span> <i>+</i> langgraph-agent</h1>
+  <h1 style="font-size:1.1rem; opacity:.7; margin-top:-6px;">the full triage flow, function by function</h1>
+  <p>An animated walkthrough of what actually happens between a Jira ticket being labeled <code>ai-generated</code> and it landing on someone's desk — every step below shows exactly which function calls which, taken directly from this repo's source.</p>
+  <div class="btnrow">
+    <button onclick="playFlow()">▶ Play the flow</button>
+    <button class="ghost" onclick="resetFlow()">Reset</button>
+  </div>
+</header>
+
+<main>
+
+  <section>
+    <h2>1. Component map — who calls who</h2>
+    <p class="sub">Six hops, six numbers, in chronological order for one ticket. The detailed step-by-step is in section 2.</p>
+
+    <div class="diagram-wrap">
+      <svg viewBox="0 0 920 520" xmlns="http://www.w3.org/2000/svg">
+        <defs>
+          <marker id="arrow-go" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+            <path d="M0,0 L10,5 L0,10 z" style="fill:var(--go)"></path>
+          </marker>
+          <marker id="arrow-py" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+            <path d="M0,0 L10,5 L0,10 z" style="fill:var(--py)"></path>
+          </marker>
+          <marker id="arrow-llm" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+            <path d="M0,0 L10,5 L0,10 z" style="fill:var(--llm)"></path>
+          </marker>
+        </defs>
+
+        <!-- edges (drawn first so boxes sit on top of line ends) -->
+        <g class="edge go">
+          <path d="M175,180 C175,128 300,98 402,84" marker-end="url(#arrow-go)"></path>
+          <circle class="enum-circle" cx="163" cy="138" r="11"></circle>
+          <text class="enum-num" x="163" y="138">1</text>
+          <text class="elabel" x="196" y="126">Jira REST API</text>
+          <text class="elabel" x="196" y="140">(poller: SearchTickets, AddLabel —</text>
+          <text class="elabel" x="196" y="154">also where ③ &amp; ⑥ ultimately land)</text>
+        </g>
+
+        <g class="edge go">
+          <path d="M320,205 L578,205" marker-end="url(#arrow-go)"></path>
+          <circle class="enum-circle" cx="336" cy="205" r="11"></circle>
+          <text class="enum-num" x="336" y="205">2</text>
+          <text class="elabel" x="382" y="195">POST /triage</text>
+        </g>
+
+        <g class="edge py">
+          <path d="M578,250 L320,250" marker-end="url(#arrow-py)"></path>
+          <circle class="enum-circle" cx="562" cy="250" r="11"></circle>
+          <text class="enum-num" x="562" y="250">3</text>
+          <text class="elabel" x="345" y="240">get_ticket ×2 (read_ticket)</text>
+        </g>
+
+        <g class="edge py">
+          <path d="M715,320 L715,406" marker-end="url(#arrow-py)"></path>
+          <circle class="enum-circle" cx="715" cy="336" r="11"></circle>
+          <text class="enum-num" x="715" y="336">4</text>
+          <text class="elabel" x="705" y="355" text-anchor="end">POST</text>
+          <text class="elabel" x="705" y="368" text-anchor="end">/v1/chat/completions</text>
+        </g>
+
+        <g class="edge llm">
+          <path d="M765,406 L765,320" marker-end="url(#arrow-llm)"></path>
+          <circle class="enum-circle" cx="765" cy="390" r="11"></circle>
+          <text class="enum-num" x="765" y="390">5</text>
+          <text class="elabel" x="775" y="355" text-anchor="start">verdict JSON</text>
+          <text class="elabel" x="775" y="368" text-anchor="start">(is_spam, issue_scope, ...)</text>
+        </g>
+
+        <g class="edge py">
+          <path d="M578,295 L320,295" marker-end="url(#arrow-py)"></path>
+          <circle class="enum-circle" cx="562" cy="295" r="11"></circle>
+          <text class="enum-num" x="562" y="295">6</text>
+          <text class="elabel" x="345" y="312">update_assignee, add_comment,</text>
+          <text class="elabel" x="345" y="325">add_label (route)</text>
+        </g>
+
+        <!-- boxes -->
+        <g class="cbox jira">
+          <rect x="330" y="16" width="240" height="70"></rect>
+          <text class="title" x="450" y="46" text-anchor="middle">Jira (self-hosted)</text>
+          <text class="sub" x="450" y="66" text-anchor="middle">jira.devtools.intel.com</text>
+        </g>
+
+        <g class="cbox go">
+          <rect x="30" y="180" width="290" height="140"></rect>
+          <text class="title" x="175" y="212" text-anchor="middle">jira-agent (Go)</text>
+          <text class="sub" x="175" y="240" text-anchor="middle">Poller · HTTPDispatcher</text>
+          <text class="sub" x="175" y="258" text-anchor="middle">MCP Jira Server (/mcp/jira)</text>
+        </g>
+
+        <g class="cbox py">
+          <rect x="580" y="180" width="310" height="140"></rect>
+          <text class="title" x="735" y="212" text-anchor="middle">langgraph-agent (Python)</text>
+          <text class="sub" x="735" y="240" text-anchor="middle">FastAPI /triage · LangGraph</text>
+          <text class="sub" x="735" y="258" text-anchor="middle">JiraTools (MCP client)</text>
+        </g>
+
+        <g class="cbox llm">
+          <rect x="610" y="406" width="260" height="80"></rect>
+          <text class="title" x="740" y="440" text-anchor="middle">vLLM</text>
+          <text class="sub" x="740" y="460" text-anchor="middle">Qwen/Qwen3.6-27B-FP8</text>
+        </g>
+      </svg>
+    </div>
+
+    <p class="diagram-caption">
+      Chronological order for one ticket: <b>①</b> poller ticks, queries Jira directly · <b>②</b> a matching ticket is dispatched to langgraph-agent · <b>③</b> langgraph-agent calls back into jira-agent's MCP server to read the ticket (twice — <code>get_ticket</code>, then again via <code>get_reporter</code>) · <b>④</b> the ticket text goes to vLLM · <b>⑤</b> vLLM returns the parsed verdict (spam/valid, scope, comment) · <b>⑥</b> <code>route</code> writes the decision back to Jira via the same MCP server. <b>③</b> and <b>⑥</b> both terminate at jira-agent's MCP layer, which then executes the actual Jira REST call using the same <code>jira.Client</code> that edge <b>①</b> uses for polling.
+    </p>
+    <p class="diagram-caption">
+      Color = who initiates the call: <span style="color:var(--go)">Go/jira-agent</span> for ① and ②, <span style="color:var(--py)">Python/langgraph-agent</span> for ③, ④ and ⑥, <span style="color:var(--llm)">vLLM</span> for the response leg ⑤. Neither service ever talks to Jira or vLLM through the other — <code>jira-agent</code> never calls vLLM, and <code>langgraph-agent</code> never calls Jira directly.
+    </p>
+  </section>
+
+  <section>
+    <h2>2. The live path</h2>
+    <p class="sub">Every step here is wired and running today on hldc03. Each call-chain box reads top-to-bottom as "caller → callee".</p>
+    <div class="legend">
+      <span><i class="dot" style="background:var(--jira)"></i>Jira / external</span>
+      <span><i class="dot" style="background:var(--go)"></i>Go · jira-agent</span>
+      <span><i class="dot" style="background:var(--py)"></i>Python · langgraph-agent</span>
+      <span><i class="dot" style="background:var(--llm)"></i>LLM · vLLM/Qwen3</span>
+    </div>
+
+    <div class="timeline" id="timeline">
+
+      <div class="step" data-dot="var(--jira)">
+        <span class="tag" style="background:var(--jira)">Jira</span>
+        <h3>QA agent labels a ticket</h3>
+        <p class="desc">A ticket in project <code>GAUDISW</code>, component <code>DevOps_K8S</code>, gets the label <code>ai-generated</code>. No code runs yet — this is just the trigger condition the poller looks for.</p>
+      </div>
+
+      <div class="step" data-dot="var(--go)">
+        <span class="tag" style="background:var(--go)">Go · jira-agent</span>
+        <h3>Poller ticks (every 1h)</h3>
+        <p class="desc">Runs a JQL search directly against Jira — no MCP involved, this is jira-agent talking to Jira for its own purposes.</p>
+        <div class="callchain">
+          <div class="hop"><i class="dot" style="background:var(--go)"></i><b>Poller.Run()</b><span class="arrow">ticker fires →</span><b>Poller.Poll()</b></div>
+          <div class="hop"><span class="indent"></span><span class="arrow">→</span><b>Poller.buildJQL()</b></div>
+          <div class="hop"><span class="indent"></span><span class="arrow">→</span><b>jiraPollerAdapter.SearchTickets()</b></div>
+          <div class="hop"><span class="indent"></span><span class="arrow">→</span><b>jira.Client.SearchTickets()</b><span class="arrow">→ Jira REST API</span></div>
+        </div>
+      </div>
+
+      <div class="step" data-dot="var(--go)">
+        <span class="tag" style="background:var(--go)">Go · jira-agent</span>
+        <h3>Ticket found → stamp <code>triage-in-progress</code></h3>
+        <p class="desc">Dedup guard, applied <em>before</em> dispatch so the same ticket can't be double-processed across poll cycles.</p>
+        <div class="callchain">
+          <div class="hop"><i class="dot" style="background:var(--go)"></i><b>Poller.dispatchTicket()</b><span class="arrow">→</span><b>jiraPollerAdapter.AddLabel()</b></div>
+          <div class="hop"><span class="indent"></span><span class="arrow">→</span><b>jira.Client.AddLabel()</b><span class="arrow">→ Jira REST API</span></div>
+        </div>
+      </div>
+
+      <div class="step" data-dot="var(--go)">
+        <span class="tag" style="background:var(--go)">Go → Python</span>
+        <h3>HTTP dispatch</h3>
+        <p class="desc">The one and only hop from Go into Python — a plain synchronous HTTP call, not MCP.</p>
+        <div class="callchain">
+          <div class="hop"><i class="dot" style="background:var(--go)"></i><b>Poller.dispatchTicket()</b><span class="arrow">→</span><b>HTTPDispatcher.Dispatch()</b></div>
+          <div class="hop"><span class="indent"></span><span class="arrow">→</span><code>POST langgraph-agent:8000/triage</code></div>
+          <div class="hop"><i class="dot" style="background:var(--py)"></i><span class="indent"></span><span class="arrow">→</span><b>server.py: triage()</b> handler</div>
+        </div>
+      </div>
+
+      <div class="step" data-dot="var(--py)">
+        <span class="tag" style="background:var(--py)">Python · langgraph-agent</span>
+        <h3>Graph starts — <code>initialize → read_ticket</code></h3>
+        <p class="desc"><code>read_ticket</code> calls <em>back</em> into jira-agent over MCP — twice, actually: <code>get_reporter()</code> doesn't have its own tool, it just re-calls <code>get_ticket</code> and parses the "Reporter:" line out of the same text.</p>
+        <div class="callchain">
+          <div class="hop"><i class="dot" style="background:var(--py)"></i><b>triage()</b><span class="arrow">→</span><b>graph.ainvoke()</b><span class="arrow">→</span><b>initialize(state)</b><span class="arrow">→</span><b>read_ticket(state)</b></div>
+          <div class="hop"><span class="indent"></span><span class="arrow">→</span><b>JiraTools.get_ticket()</b><span class="arrow">→</span><b>BaseMCPClient.call_tool("get_ticket")</b></div>
+          <div class="hop"><span class="indent"></span><span class="indent"></span><span class="arrow">→ HTTP POST /mcp/jira →</span></div>
+          <div class="hop"><i class="dot" style="background:var(--go)"></i><span class="indent"></span><span class="arrow">Go: registerGetTicketTool handler →</span><b>jira.Client.GetTicket()</b><span class="arrow">→ Jira REST</span></div>
+          <div class="hop"><i class="dot" style="background:var(--py)"></i><b>read_ticket(state)</b><span class="arrow">→</span><b>JiraTools.get_reporter()</b><span class="arrow">→</span><b>JiraTools.get_ticket()</b><span class="arrow">(again — same tool, 2nd round-trip)</span></div>
+        </div>
+      </div>
+
+      <div class="step" data-dot="var(--llm)">
+        <span class="tag" style="background:var(--llm)">LLM · Qwen3 / vLLM</span>
+        <h3><code>evaluate</code> — SpamEvaluator</h3>
+        <p class="desc">The model judges: Jenkins link present? server identifiable? actually K8s-layer, or out of scope?</p>
+        <div class="callchain">
+          <div class="hop"><i class="dot" style="background:var(--py)"></i><b>evaluate(state)</b><span class="arrow">→</span><b>SpamEvaluator.run()</b><span class="arrow">→</span><b>SpamEvaluator._evaluate()</b></div>
+          <div class="hop"><span class="indent"></span><span class="arrow">→</span><b>create_extraction_llm()</b><span class="arrow">→</span><b>ChatOpenAI.ainvoke()</b></div>
+          <div class="hop"><i class="dot" style="background:var(--llm)"></i><span class="indent"></span><span class="arrow">→ POST vllm-service:8000/v1/chat/completions →</span><b>Qwen/Qwen3.6-27B-FP8</b></div>
+        </div>
+      </div>
+
+      <div class="step" data-dot="var(--muted)" style="border-color:var(--border); box-shadow:none;">
+        <span class="tag" style="background:var(--muted); color:#0b0f19">Branch</span>
+        <h3><code>route</code> — TicketRouter decides</h3>
+        <p class="desc"><b>route(state) → TicketRouter.run(state, rr_index)</b> — then one of two branches. <em>Click either card to preview its outcome.</em></p>
+        <div class="branch-wrap">
+          <div class="branch spam" id="branch-spam" onclick="chooseBranch('spam')" role="button" tabindex="0">
+            <h4>🚫 Spam / out of scope</h4>
+            <div class="callchain">
+              <div class="hop"><b>_handle_spam()</b><span class="arrow">→</span><b>JiraTools.update_assignee()</b><span class="arrow">→ reporter</span></div>
+              <div class="hop"><span class="indent"></span><span class="arrow">→</span><b>JiraTools.add_comment()</b><span class="arrow">→ explains why</span></div>
+              <div class="hop"><span class="indent"></span><span class="arrow">→</span><b>JiraTools.add_label(</b><code>triage-agent-done</code><b>)</b></div>
+            </div>
+          </div>
+          <div class="branch valid" id="branch-valid" onclick="chooseBranch('valid')" role="button" tabindex="0">
+            <h4>✅ Valid K8s issue</h4>
+            <div class="callchain">
+              <div class="hop"><b>_handle_valid()</b><span class="arrow">→</span><b>JiraTools.update_assignee()</b><span class="arrow">→ round-robin pick</span></div>
+              <div class="hop"><span class="indent"></span><span class="arrow">→</span><b>JiraTools.add_label(</b><code>triage-agent-done</code><b>)</b></div>
+            </div>
+          </div>
+        </div>
+        <p class="desc" style="margin-top:10px; font-size:0.76rem;">Every <code>update_assignee</code> / <code>add_comment</code> / <code>add_label</code> call above goes through the same MCP round-trip as <code>get_ticket</code> did: <code>BaseMCPClient.call_tool()</code> → <code>/mcp/jira</code> → the matching Go <code>register*Tool</code> handler → <code>jira.Client.*()</code> → Jira REST.</p>
+      </div>
+
+      <div class="step capstone" data-dot="var(--ok)">
+        <span class="tag" style="background:var(--ok)">Done</span>
+        <h3>Ticket resolved</h3>
+        <p>No new function runs here — it's the observable result of the <code>add_label</code> call above. The ticket is now either back with the reporter or in a teammate's queue, and excluded from the next poll by the JQL filter.</p>
+      </div>
+
+    </div>
+  </section>
+
+  <section>
+    <h2>3. What the console actually logs</h2>
+    <p class="sub">Paraphrased from the real log lines in <code>poller.go</code>, <code>supervisor.py</code>, and <code>spam_evaluator.py</code>.</p>
+    <div class="console" id="console"><span class="muted2">// click "Play the flow" above ...</span></div>
+  </section>
+
+  <section>
+    <h2>4. Why two services, not one</h2>
+    <p class="sub">jira-agent holds the keys; langgraph-agent holds the judgment.</p>
+    <div class="roles">
+      <div class="role go">
+        <h3>jira-agent (Go)</h3>
+        <div class="role-sub">integration / infrastructure layer</div>
+        <ul>
+          <li>Only thing holding <code>JIRA_API_TOKEN</code></li>
+          <li>Owns polling schedule + JQL + label-based dedup</li>
+          <li>Exposes Jira as MCP tools over <code>/mcp/jira</code></li>
+          <li>Never judges a ticket — just notices &amp; later executes</li>
+        </ul>
+      </div>
+      <div class="role py">
+        <h3>langgraph-agent (Python)</h3>
+        <div class="role-sub">decision / orchestration layer</div>
+        <ul>
+          <li>Runs the LLM, makes every judgment call</li>
+          <li>Owns the LangGraph state machine</li>
+          <li>Zero Jira credentials of its own</li>
+          <li>Purely reactive — no ticker, only responds to <code>/triage</code></li>
+        </ul>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <h2>5. Config, for reference</h2>
+    <div class="facts">
+      <div class="fact"><div class="k">Project</div><div class="v">GAUDISW</div></div>
+      <div class="fact"><div class="k">Component</div><div class="v">DevOps_K8S</div></div>
+      <div class="fact"><div class="k">Poll interval</div><div class="v">1h</div></div>
+      <div class="fact"><div class="k">Max concurrent</div><div class="v">5</div></div>
+      <div class="fact"><div class="k">Team members</div><div class="v">dweinsto, davidtal, gennadyd</div></div>
+      <div class="fact"><div class="k">LLM</div><div class="v">Qwen/Qwen3.6-27B-FP8</div></div>
+      <div class="fact"><div class="k">LLM endpoint</div><div class="v">vllm-service:8000</div></div>
+      <div class="fact"><div class="k">Jira</div><div class="v">jira.devtools.intel.com</div></div>
+    </div>
+  </section>
+
+</main>
+
+<footer>Generated from the actual jira-triage-agent source — not a design doc.</footer>
+
+<script>
+const steps = document.querySelectorAll('.step');
+const consoleEl = document.getElementById('console');
+const branchSpam = document.getElementById('branch-spam');
+const branchValid = document.getElementById('branch-valid');
+const BRANCH_INDEX = 6; // steps[6] is the "route" branch card
+let playing = false;
+
+// One console line per step index (0..7). Index 6 & 7 get extra outcome-specific
+// lines appended via nested timeouts rather than baked into this array, so there's
+// no index arithmetic to get wrong.
+const baseLines = [
+  ["// GAUDISW-482 labeled ai-generated", "(Jira, external event)"],
+  ["polling jira", "jql=\"project=GAUDISW AND component=DevOps_K8S AND labels='ai-generated' AND labels NOT IN (triage-agent-done, triage-in-progress)\""],
+  ["found tickets", "count=1 → AddLabel(triage-in-progress)"],
+  ["dispatching ticket", "ticketID=GAUDISW-482 → POST /triage"],
+  ["Reading ticket GAUDISW-482", "get_ticket ×2 (ticket + reporter) via /mcp/jira"],
+  ["Evaluating ticket GAUDISW-482 for spam", "→ vLLM Qwen/Qwen3.6-27B-FP8"],
+  ["TicketRouter.run() routing GAUDISW-482", ""],
+  ["triage complete", "labeled triage-agent-done"],
+];
+
+function resetFlow(){
+  steps.forEach(s => { s.classList.remove('active'); s.style.setProperty('--dot', s.dataset.dot); });
+  [branchSpam, branchValid].forEach(b => b.classList.remove('chosen','notchosen'));
+  consoleEl.innerHTML = '<span class="muted2">// click "Play the flow" above ...</span>';
+  playing = false;
+}
+
+function addLine(label, detail){
+  const row = document.createElement('div');
+  row.className = 'line';
+  row.innerHTML = `<span class="muted2">$</span> ${label}${detail ? '  <span class="muted2">'+detail+'</span>' : ''}`;
+  consoleEl.appendChild(row);
+  consoleEl.scrollTop = consoleEl.scrollHeight;
+}
+
+// Lets you click either branch card directly to preview its outcome,
+// independent of playFlow()'s random pick.
+function chooseBranch(outcome){
+  branchSpam.classList.remove('chosen','notchosen');
+  branchValid.classList.remove('chosen','notchosen');
+
+  const routeStep = steps[BRANCH_INDEX];
+  routeStep.style.setProperty('--dot', routeStep.dataset.dot);
+  routeStep.classList.add('active');
+
+  addLine(`// previewing: ${outcome} path`, "");
+  if(outcome === 'valid'){
+    branchValid.classList.add('chosen'); branchSpam.classList.add('notchosen');
+    addLine("Ticket GAUDISW-482", "is_spam=False jenkins=True server=True scope=k8s");
+    addLine("assigning to davidtal", "update_assignee + add_label(triage-agent-done)");
+  } else {
+    branchSpam.classList.add('chosen'); branchValid.classList.add('notchosen');
+    addLine("Ticket GAUDISW-482", "is_spam=True reason=\"no Jenkins job link found\"");
+    addLine("returning to reporter jsmith", "update_assignee + add_comment + add_label(triage-agent-done)");
+  }
+}
+
+function playFlow(){
+  if(playing) return;
+  playing = true;
+  resetFlow();
+  const outcome = Math.random() > 0.5 ? 'valid' : 'spam';
+
+  steps.forEach((s, i) => {
+    const delay = i * 900 + (i > BRANCH_INDEX ? 1000 : 0);
+    setTimeout(() => {
+      s.classList.add('active');
+      const [label, detail] = baseLines[i];
+      addLine(label, detail);
+
+      if(i === BRANCH_INDEX){
+        setTimeout(() => chooseBranch(outcome), 500);
+      }
+    }, delay);
+  });
+
+  const totalTime = (steps.length - 1) * 900 + 1000 + 1200;
+  setTimeout(() => {
+    const cursor = document.createElement('span');
+    cursor.className = 'cursor';
+    consoleEl.appendChild(cursor);
+    playing = false;
+  }, totalTime);
+}
+
+// auto-play once on load
+window.addEventListener('load', () => setTimeout(playFlow, 600));
+</script>
+
+</body>
+</html>
