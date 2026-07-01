@@ -30,6 +30,8 @@ class Settings(BaseSettings):
         default="http://jira-agent:8080/mcp/jira",
         alias="JIRA_MCP_ENDPOINT",
     )
+    mcp_connection_timeout: int = Field(default=30, alias="MCP_CONNECTION_TIMEOUT")
+    mcp_sse_read_timeout: int = Field(default=300, alias="MCP_SSE_READ_TIMEOUT")
 
     # Triage config — stored as raw CSV string, exposed as list via computed_field
     team_members_raw: str = Field(default="", alias="TEAM_MEMBERS")
