@@ -42,6 +42,7 @@ func TestHTTPDispatcher(t *testing.T) {
 func TestHTTPDispatcher_StatusOK(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
+		w.Write([]byte(`{"status":"completed","ticket_id":"TEST-456"}`))
 	}))
 	defer server.Close()
 
@@ -50,6 +51,43 @@ func TestHTTPDispatcher_StatusOK(t *testing.T) {
 
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+// TestHTTPDispatcher_InternalFailureWith200 reproduces the real bug found while
+// triaging GAUDISW-249881 and 19 other tickets: langgraph-agent's /triage catches
+// its own exceptions and still replies HTTP 200 with status:"failed" in the body.
+// Checking only the HTTP status code treated this as a successful dispatch, so
+// jira-agent never removed the triage-in-progress label — permanently excluding
+// the ticket from every future poll (labels NOT IN (triage-agent-done,
+// triage-in-progress)) despite the ticket never actually being triaged.
+func TestHTTPDispatcher_InternalFailureWith200(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte(`{"status":"failed","ticket_id":"GAUDISW-249881","error":"'Settings' object has no attribute 'mcp_connection_timeout'"}`))
+	}))
+	defer server.Close()
+
+	dispatcher := poller.NewHTTPDispatcher(server.URL)
+	err := dispatcher.Dispatch(context.Background(), "GAUDISW-249881")
+
+	if err == nil {
+		t.Fatal("expected error for status:\"failed\" body despite HTTP 200, got nil")
+	}
+}
+
+func TestHTTPDispatcher_MalformedBodyWith200(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte("not json"))
+	}))
+	defer server.Close()
+
+	dispatcher := poller.NewHTTPDispatcher(server.URL)
+	err := dispatcher.Dispatch(context.Background(), "TEST-MALFORMED")
+
+	if err == nil {
+		t.Fatal("expected error for unparseable body on 200, got nil")
 	}
 }
 
@@ -139,6 +177,7 @@ func TestHTTPDispatcher_ContentType(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		receivedContentType = r.Header.Get("Content-Type")
 		w.WriteHeader(http.StatusOK)
+		w.Write([]byte(`{"status":"completed","ticket_id":"TEST-CT"}`))
 	}))
 	defer server.Close()
 
@@ -158,6 +197,7 @@ func TestHTTPDispatcher_HTTPMethod(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		receivedMethod = r.Method
 		w.WriteHeader(http.StatusOK)
+		w.Write([]byte(`{"status":"completed","ticket_id":"TEST-METHOD"}`))
 	}))
 	defer server.Close()
 
