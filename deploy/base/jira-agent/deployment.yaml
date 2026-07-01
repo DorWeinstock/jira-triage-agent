@@ -16,6 +16,8 @@ spec:
         app: jira-agent
     spec:
       serviceAccountName: jira-agent-sa
+      nodeSelector:
+        habana.ai/services: "true"
       containers:
       - name: jira-agent
         image: jira-triage-agent  # resolved by kustomize images: in kustomization.yaml
