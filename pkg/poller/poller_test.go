@@ -757,14 +757,14 @@ func TestPollerJQLWithLabelFilters(t *testing.T) {
 			project:     "GAUDISW",
 			component:   "DevOps_K8S",
 			issueType:   "Bug",
-			expectedJQL: `project = "GAUDISW" AND issuetype = "Bug" AND component = "DevOps_K8S" AND labels = "` + poller.LabelInvestigationRequired + `" AND labels NOT IN (` + poller.LabelInvestigationComplete + `, ` + poller.LabelInvestigationInProgress + `)`,
+			expectedJQL: `project = "GAUDISW" AND issuetype = "Bug" AND component = "DevOps_K8S" AND labels = "` + poller.LabelInvestigationRequired + `" AND labels NOT IN (` + poller.LabelInvestigationComplete + `, ` + poller.LabelInvestigationInProgress + `) AND status = "Open"`,
 		},
 		{
 			name:        "without issue type",
 			project:     "GAUDISW",
 			component:   "DevOps_K8S",
 			issueType:   "",
-			expectedJQL: `project = "GAUDISW" AND issuetype in ("Bug", "Task") AND component = "DevOps_K8S" AND labels = "` + poller.LabelInvestigationRequired + `" AND labels NOT IN (` + poller.LabelInvestigationComplete + `, ` + poller.LabelInvestigationInProgress + `)`,
+			expectedJQL: `project = "GAUDISW" AND issuetype in ("Bug", "Task") AND component = "DevOps_K8S" AND labels = "` + poller.LabelInvestigationRequired + `" AND labels NOT IN (` + poller.LabelInvestigationComplete + `, ` + poller.LabelInvestigationInProgress + `) AND status = "Open"`,
 		},
 	}
 
@@ -819,6 +819,11 @@ func TestPollerJQLNoTimeFilter(t *testing.T) {
 	}
 	if !contains(jiraClient.capturedJQL, poller.LabelInvestigationInProgress) {
 		t.Errorf("JQL should contain in-progress label, got: %s", jiraClient.capturedJQL)
+	}
+
+	// Verify JQL only targets Open tickets — resolved tickets should never be dispatched
+	if !contains(jiraClient.capturedJQL, `status = "Open"`) {
+		t.Errorf("JQL should restrict to status=Open, got: %s", jiraClient.capturedJQL)
 	}
 }
 

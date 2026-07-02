@@ -151,6 +151,9 @@ func (p *Poller) buildJQL() string {
 	}
 	parts = append(parts, `labels NOT IN (`+processedLabel+`, `+LabelInvestigationInProgress+`)`)
 
+	// Only touch fresh, untouched tickets — skip anything already resolved.
+	parts = append(parts, `status = "Open"`)
+
 	return strings.Join(parts, " AND ")
 }
 
