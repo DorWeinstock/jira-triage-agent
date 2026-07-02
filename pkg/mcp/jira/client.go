@@ -385,26 +385,30 @@ type CreateIssueResult struct {
 }
 
 // CreateIssue opens a new Jira ticket in the given project.
-// Note: this instance's /rest/api/2/issue/createmeta endpoint returned an error
-// when probed, so any project-specific required custom fields beyond the
-// standard project/summary/description/issuetype couldn't be discovered ahead
-// of time — Jira's own error response (surfaced verbatim below) will name them
-// on first use if the project requires more.
-func (c *Client) CreateIssue(ctx context.Context, projectKey, issueType, summary, description string) (*CreateIssueResult, error) {
+// additionalFields is merged directly into the request's "fields" object —
+// use it for anything beyond the standard set (e.g. components, or
+// project-specific required custom fields). Confirmed empirically: this
+// instance's /rest/api/2/issue/createmeta endpoint errors when queried, so
+// required custom fields can't be discovered ahead of time; Jira's own error
+// response names them on first use if the project requires more than what's
+// passed here.
+func (c *Client) CreateIssue(ctx context.Context, projectKey, issueType, summary, description string, additionalFields map[string]interface{}) (*CreateIssueResult, error) {
 	if err := c.waitForRateLimit(ctx); err != nil {
 		return nil, err
 	}
 
 	apiURL := fmt.Sprintf("%s/rest/api/2/issue", c.baseURL)
 
-	body := map[string]interface{}{
-		"fields": map[string]interface{}{
-			"project":     map[string]string{"key": projectKey},
-			"summary":     summary,
-			"description": description,
-			"issuetype":   map[string]string{"name": issueType},
-		},
+	fields := map[string]interface{}{
+		"project":     map[string]string{"key": projectKey},
+		"summary":     summary,
+		"description": description,
+		"issuetype":   map[string]string{"name": issueType},
 	}
+	for k, v := range additionalFields {
+		fields[k] = v
+	}
+	body := map[string]interface{}{"fields": fields}
 	bodyBytes, err := json.Marshal(body)
 	if err != nil {
 		return nil, fmt.Errorf("marshaling request body: %w", err)

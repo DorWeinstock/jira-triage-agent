@@ -362,13 +362,55 @@ func TestCreateIssue(t *testing.T) {
 	defer server.Close()
 
 	client := jira.NewClient(server.URL, "test-pat")
-	result, err := client.CreateIssue(context.Background(), "TEST", "Bug", "New bug", "Description text")
+	result, err := client.CreateIssue(context.Background(), "TEST", "Bug", "New bug", "Description text", nil)
 
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	if result.Key != "TEST-999" {
 		t.Errorf("expected key 'TEST-999', got '%s'", result.Key)
+	}
+}
+
+func TestCreateIssue_AdditionalFields(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var body map[string]interface{}
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			t.Fatalf("failed to decode request body: %v", err)
+		}
+		fields, ok := body["fields"].(map[string]interface{})
+		if !ok {
+			t.Fatal("expected 'fields' key in body")
+		}
+		// Standard fields must still be present alongside the extra ones.
+		if fields["summary"] != "New bug" {
+			t.Errorf("expected summary 'New bug', got %v", fields["summary"])
+		}
+		if fields["customfield_20821"] != "No" {
+			t.Errorf("expected customfield_20821 'No', got %v", fields["customfield_20821"])
+		}
+		components, ok := fields["components"].([]interface{})
+		if !ok || len(components) != 1 {
+			t.Fatalf("expected components array with 1 entry, got %v", fields["components"])
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusCreated)
+		w.Write([]byte(`{"id": "18300001", "key": "TEST-1000"}`))
+	}))
+	defer server.Close()
+
+	client := jira.NewClient(server.URL, "test-pat")
+	result, err := client.CreateIssue(context.Background(), "TEST", "Bug", "New bug", "", map[string]interface{}{
+		"customfield_20821": "No",
+		"components":        []map[string]string{{"name": "DevOps_K8S"}},
+	})
+
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if result.Key != "TEST-1000" {
+		t.Errorf("expected key 'TEST-1000', got '%s'", result.Key)
 	}
 }
 
@@ -382,7 +424,7 @@ func TestCreateIssue_MissingRequiredField(t *testing.T) {
 	defer server.Close()
 
 	client := jira.NewClient(server.URL, "test-pat")
-	_, err := client.CreateIssue(context.Background(), "TEST", "Bug", "New bug", "")
+	_, err := client.CreateIssue(context.Background(), "TEST", "Bug", "New bug", "", nil)
 
 	if err == nil {
 		t.Fatal("expected error for missing required field")

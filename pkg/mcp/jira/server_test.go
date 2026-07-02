@@ -238,7 +238,7 @@ func TestServerIntegration_CreateIssue(t *testing.T) {
 	client := jira.NewClient(mockServer.URL, "test-pat")
 	_ = jira.NewMCPServer(client)
 
-	result, err := client.CreateIssue(context.Background(), "TEST", "Bug", "New bug", "Description")
+	result, err := client.CreateIssue(context.Background(), "TEST", "Bug", "New bug", "Description", nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}

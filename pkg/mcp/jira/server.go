@@ -209,10 +209,12 @@ func registerCreateIssueTool(server *mcp.Server, client *Client) {
 			Description: "Create a new Jira ticket",
 		},
 		func(ctx context.Context, _ *mcp.CallToolRequest, input struct {
-			Project     string `json:"project" jsonschema:"The Jira project key (e.g., GAUDISW)"`
-			IssueType   string `json:"issue_type" jsonschema:"The issue type (e.g., Bug, Task)"`
-			Summary     string `json:"summary" jsonschema:"The ticket summary/title"`
-			Description string `json:"description" jsonschema:"The ticket description"`
+			Project          string                 `json:"project" jsonschema:"The Jira project key (e.g., GAUDISW)"`
+			IssueType        string                 `json:"issue_type" jsonschema:"The issue type (e.g., Bug, Task)"`
+			Summary          string                 `json:"summary" jsonschema:"The ticket summary/title"`
+			Description      string                 `json:"description" jsonschema:"The ticket description"`
+			Components       []string               `json:"components,omitempty" jsonschema:"Component names (e.g., [\"DevOps_K8S\"]) — required by some projects"`
+			AdditionalFields map[string]interface{} `json:"additional_fields,omitempty" jsonschema:"Arbitrary extra fields merged into the request, e.g. required custom fields: {\"customfield_10010\": \"value\"}"`
 		}) (*mcp.CallToolResult, any, error) {
 			if input.Project == "" {
 				return nil, nil, fmt.Errorf("project is required")
@@ -223,7 +225,18 @@ func registerCreateIssueTool(server *mcp.Server, client *Client) {
 			if input.Summary == "" {
 				return nil, nil, fmt.Errorf("summary is required")
 			}
-			result, err := client.CreateIssue(ctx, input.Project, input.IssueType, input.Summary, input.Description)
+			fields := map[string]interface{}{}
+			for k, v := range input.AdditionalFields {
+				fields[k] = v
+			}
+			if len(input.Components) > 0 {
+				comps := make([]map[string]string, len(input.Components))
+				for i, name := range input.Components {
+					comps[i] = map[string]string{"name": name}
+				}
+				fields["components"] = comps
+			}
+			result, err := client.CreateIssue(ctx, input.Project, input.IssueType, input.Summary, input.Description, fields)
 			if err != nil {
 				return nil, nil, fmt.Errorf("failed to create issue: %w", err)
 			}
