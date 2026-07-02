@@ -36,6 +36,29 @@ Jira ticket with label "ai-generated"
 | **langgraph-agent** | Python | LangGraph workflow: read → evaluate → route |
 | **vLLM** | — | Self-hosted LLM inference on Intel Gaudi |
 
+### Component map — who calls who
+
+Numbers are chronological order for one ticket. Color = who initiates the call. Full interactive version (animated, click-to-preview spam/valid branches) at [docs/architecture/flow-explainer.html](docs/architecture/flow-explainer.html).
+
+```mermaid
+flowchart TB
+    Jira[("Jira<br/>jira.devtools.intel.com")]
+    JA["jira-agent (Go)<br/>Poller + MCP server"]
+    LA["langgraph-agent (Python)<br/>FastAPI + LangGraph"]
+    VLLM["vLLM<br/>Qwen/Qwen3.6-27B-FP8"]
+
+    JA -- "① poll: SearchTickets, AddLabel" --> Jira
+    JA -- "② POST /triage" --> LA
+    LA -- "③ get_ticket ×2 (read_ticket)" --> JA
+    LA -- "④ POST /v1/chat/completions" --> VLLM
+    VLLM -- "⑤ verdict JSON" --> LA
+    LA -- "⑥ update_assignee, add_comment,<br/>add_label, remove_label (route)" --> JA
+
+    linkStyle 0,1 stroke:#00ADD8,color:#00ADD8
+    linkStyle 2,3,5 stroke:#4B8BBE,color:#4B8BBE
+    linkStyle 4 stroke:#a78bfa,color:#a78bfa
+```
+
 ### LangGraph Workflow
 
 ```
