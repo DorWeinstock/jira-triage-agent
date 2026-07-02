@@ -101,6 +101,26 @@ The Go monolith exposes a Jira MCP server at `/mcp/jira`.
 | `/mcp/jira` | POST | MCP tool server (see above) |
 | `/poll` | POST | Trigger a poll cycle immediately (`202 Accepted`, runs in the background) — instead of waiting for the next hourly tick or restarting the pod |
 
+### Triggering a full triage cycle manually
+
+`/poll` is a `ClusterIP`-only endpoint (no external ingress), so reaching it from outside the cluster needs a port-forward first. This runs the exact same cycle as the hourly ticker — search Jira, dispatch every matching ticket, and let each one flow through the full `initialize → read_ticket → evaluate → route` workflow — just triggered on demand instead of waiting up to an hour:
+
+```bash
+# Terminal 1 — forward the ClusterIP service to your machine
+kubectl --context hldc03 -n jira-triage-agent port-forward svc/jira-agent 8080:8080
+
+# Terminal 2 — trigger the cycle
+curl -X POST http://localhost:8080/poll
+# -> 202 {"status":"poll triggered"}
+```
+
+The response returns immediately; the poll (and any resulting triage) runs in the background. Check the outcome via logs or the ticket's resulting labels/comments:
+
+```bash
+kubectl --context hldc03 -n jira-triage-agent logs -l app=jira-agent --tail=50 -f
+kubectl --context hldc03 -n jira-triage-agent logs -l app=langgraph-agent --tail=50 -f
+```
+
 ## Configuration
 
 All tunable options live in **one file**:
