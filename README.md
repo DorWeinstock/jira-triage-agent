@@ -48,14 +48,35 @@ initialize → read_ticket → evaluate → route → END
 
 ### MCP Tools (Go → Python)
 
-The Go monolith exposes a Jira MCP server at `/mcp/jira`. The Python agent calls it for all Jira operations:
+The Go monolith exposes a Jira MCP server at `/mcp/jira`.
+
+**Used by the live triage workflow** (`read_ticket`/`route`):
 
 | Tool | Description |
 |---|---|
-| `get_ticket` | Fetch ticket details (summary, description, reporter) |
+| `get_ticket` | Fetch ticket details (summary, description, reporter, comments) |
 | `add_comment` | Post a comment to a ticket |
 | `add_label` | Add a label to a ticket |
+| `remove_label` | Remove a label from a ticket — clears `triage-in-progress` once a ticket is actually triaged |
 | `update_assignee` | Assign ticket to a user (Jira Server username) |
+
+**Available, not yet called by the automated flow** (usable for manual/future use):
+
+| Tool | Description |
+|---|---|
+| `search_tickets` | Search tickets via JQL |
+| `create_issue` | Open a new ticket (project, issue type, summary, description). Note: some projects require additional fields (e.g. custom fields, components) beyond these — Jira's own error response names them if so, since this instance's `createmeta` endpoint wasn't reachable to pre-validate. |
+| `resolve_issue` | Transition a ticket to Resolved. Looks up the transition ID dynamically via the transitions endpoint rather than assuming a fixed one, since the same target status can have a different transition ID depending on the ticket's current status. |
+| `update_issue` | Update a ticket's summary and/or description |
+
+### HTTP Endpoints (jira-agent)
+
+| Endpoint | Method | Description |
+|---|---|---|
+| `/health` | GET | Liveness check |
+| `/ready` | GET | Readiness check |
+| `/mcp/jira` | POST | MCP tool server (see above) |
+| `/poll` | POST | Trigger a poll cycle immediately (`202 Accepted`, runs in the background) — instead of waiting for the next hourly tick or restarting the pod |
 
 ## Configuration
 
