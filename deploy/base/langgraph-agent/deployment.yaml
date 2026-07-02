@@ -16,6 +16,8 @@ spec:
         app: langgraph-agent
     spec:
       serviceAccountName: langgraph-agent-sa
+      nodeSelector:
+        habana.ai/services: "true"
       containers:
       - name: langgraph-agent
         image: jira-triage-langgraph  # resolved by kustomize images: in kustomization.yaml
