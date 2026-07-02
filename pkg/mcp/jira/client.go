@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
+	"strings"
 	"time"
 
 	"golang.org/x/time/rate"
@@ -357,6 +358,173 @@ func (c *Client) TransitionIssue(ctx context.Context, ticketID, transitionID str
 	}
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, apiURL, bytes.NewReader(bodyBytes))
+	if err != nil {
+		return fmt.Errorf("creating request: %w", err)
+	}
+
+	req.Header.Set("Authorization", "Bearer "+c.pat)
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return fmt.Errorf("executing request: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if err := c.handleErrorResponse(resp, http.StatusOK, http.StatusNoContent); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+// CreateIssueResult holds the identifiers Jira returns for a newly created issue.
+type CreateIssueResult struct {
+	Key string `json:"key"`
+	ID  string `json:"id"`
+}
+
+// CreateIssue opens a new Jira ticket in the given project.
+// Note: this instance's /rest/api/2/issue/createmeta endpoint returned an error
+// when probed, so any project-specific required custom fields beyond the
+// standard project/summary/description/issuetype couldn't be discovered ahead
+// of time — Jira's own error response (surfaced verbatim below) will name them
+// on first use if the project requires more.
+func (c *Client) CreateIssue(ctx context.Context, projectKey, issueType, summary, description string) (*CreateIssueResult, error) {
+	if err := c.waitForRateLimit(ctx); err != nil {
+		return nil, err
+	}
+
+	apiURL := fmt.Sprintf("%s/rest/api/2/issue", c.baseURL)
+
+	body := map[string]interface{}{
+		"fields": map[string]interface{}{
+			"project":     map[string]string{"key": projectKey},
+			"summary":     summary,
+			"description": description,
+			"issuetype":   map[string]string{"name": issueType},
+		},
+	}
+	bodyBytes, err := json.Marshal(body)
+	if err != nil {
+		return nil, fmt.Errorf("marshaling request body: %w", err)
+	}
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, apiURL, bytes.NewReader(bodyBytes))
+	if err != nil {
+		return nil, fmt.Errorf("creating request: %w", err)
+	}
+
+	req.Header.Set("Authorization", "Bearer "+c.pat)
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("executing request: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusCreated {
+		var errBody map[string]interface{}
+		if err := json.NewDecoder(resp.Body).Decode(&errBody); err == nil {
+			return nil, fmt.Errorf("jira API error (status %d): %v", resp.StatusCode, errBody)
+		}
+		return nil, fmt.Errorf("jira API error: unexpected status %d", resp.StatusCode)
+	}
+
+	var result CreateIssueResult
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		return nil, fmt.Errorf("parsing create issue response: %w", err)
+	}
+
+	return &result, nil
+}
+
+// transitionsResponse mirrors the subset of GET .../transitions we need to
+// look up a transition by its destination status name.
+type transitionsResponse struct {
+	Transitions []struct {
+		ID string `json:"id"`
+		To struct {
+			Name string `json:"name"`
+		} `json:"to"`
+	} `json:"transitions"`
+}
+
+// ResolveIssue transitions a Jira ticket to its "Resolved" status.
+// The transition ID for "Resolved" is workflow- and current-status-dependent
+// (verified: the same target status can have a different transition ID
+// depending on which status the ticket is currently in), so this looks the ID
+// up dynamically via the transitions endpoint rather than assuming a fixed ID.
+func (c *Client) ResolveIssue(ctx context.Context, ticketID string) error {
+	if err := c.waitForRateLimit(ctx); err != nil {
+		return err
+	}
+
+	apiURL := fmt.Sprintf("%s/rest/api/2/issue/%s/transitions", c.baseURL, ticketID)
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, apiURL, nil)
+	if err != nil {
+		return fmt.Errorf("creating request: %w", err)
+	}
+	req.Header.Set("Authorization", "Bearer "+c.pat)
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return fmt.Errorf("executing request: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if err := c.handleErrorResponse(resp, http.StatusOK); err != nil {
+		return fmt.Errorf("fetching transitions: %w", err)
+	}
+
+	var result transitionsResponse
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		return fmt.Errorf("decoding transitions response: %w", err)
+	}
+
+	var resolveID string
+	for _, t := range result.Transitions {
+		if strings.EqualFold(t.To.Name, "Resolved") {
+			resolveID = t.ID
+			break
+		}
+	}
+	if resolveID == "" {
+		return fmt.Errorf("no 'Resolved' transition available for %s from its current status", ticketID)
+	}
+
+	return c.TransitionIssue(ctx, ticketID, resolveID)
+}
+
+// UpdateIssue updates a Jira ticket's summary and/or description. Pass nil for
+// a field to leave it unchanged; at least one of summary or description must
+// be non-nil.
+func (c *Client) UpdateIssue(ctx context.Context, ticketID string, summary, description *string) error {
+	if summary == nil && description == nil {
+		return fmt.Errorf("at least one of summary or description must be provided")
+	}
+	if err := c.waitForRateLimit(ctx); err != nil {
+		return err
+	}
+
+	apiURL := fmt.Sprintf("%s/rest/api/2/issue/%s", c.baseURL, ticketID)
+
+	fields := map[string]interface{}{}
+	if summary != nil {
+		fields["summary"] = *summary
+	}
+	if description != nil {
+		fields["description"] = *description
+	}
+	body := map[string]interface{}{"fields": fields}
+	bodyBytes, err := json.Marshal(body)
+	if err != nil {
+		return fmt.Errorf("marshaling request body: %w", err)
+	}
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodPut, apiURL, bytes.NewReader(bodyBytes))
 	if err != nil {
 		return fmt.Errorf("creating request: %w", err)
 	}

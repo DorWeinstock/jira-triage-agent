@@ -219,3 +219,75 @@ func TestServerIntegration_RemoveLabel(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 }
+
+// TestServerIntegration_CreateIssue tests the create_issue functionality.
+func TestServerIntegration_CreateIssue(t *testing.T) {
+	mockServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/rest/api/2/issue" {
+			t.Errorf("unexpected path: %s", r.URL.Path)
+		}
+		if r.Method != http.MethodPost {
+			t.Errorf("expected POST, got %s", r.Method)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusCreated)
+		w.Write([]byte(`{"id": "18300000", "key": "TEST-999"}`))
+	}))
+	defer mockServer.Close()
+
+	client := jira.NewClient(mockServer.URL, "test-pat")
+	_ = jira.NewMCPServer(client)
+
+	result, err := client.CreateIssue(context.Background(), "TEST", "Bug", "New bug", "Description")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if result.Key != "TEST-999" {
+		t.Errorf("expected key 'TEST-999', got '%s'", result.Key)
+	}
+}
+
+// TestServerIntegration_ResolveIssue tests the resolve_issue functionality.
+func TestServerIntegration_ResolveIssue(t *testing.T) {
+	mockServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodGet {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusOK)
+			w.Write([]byte(`{"transitions": [{"id": "91", "to": {"name": "Resolved"}}]}`))
+			return
+		}
+		w.WriteHeader(http.StatusNoContent)
+	}))
+	defer mockServer.Close()
+
+	client := jira.NewClient(mockServer.URL, "test-pat")
+	_ = jira.NewMCPServer(client)
+
+	err := client.ResolveIssue(context.Background(), "TEST-123")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+// TestServerIntegration_UpdateIssue tests the update_issue functionality.
+func TestServerIntegration_UpdateIssue(t *testing.T) {
+	mockServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/rest/api/2/issue/TEST-123" {
+			t.Errorf("unexpected path: %s", r.URL.Path)
+		}
+		if r.Method != http.MethodPut {
+			t.Errorf("expected PUT, got %s", r.Method)
+		}
+		w.WriteHeader(http.StatusNoContent)
+	}))
+	defer mockServer.Close()
+
+	client := jira.NewClient(mockServer.URL, "test-pat")
+	_ = jira.NewMCPServer(client)
+
+	summary := "New title"
+	err := client.UpdateIssue(context.Background(), "TEST-123", &summary, nil)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}

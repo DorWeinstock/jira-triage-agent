@@ -29,6 +29,9 @@ func NewMCPServer(client *Client) *mcp.Server {
 	registerAddLabelTool(server, client)
 	registerRemoveLabelTool(server, client)
 	registerUpdateAssigneeTool(server, client)
+	registerCreateIssueTool(server, client)
+	registerResolveIssueTool(server, client)
+	registerUpdateIssueTool(server, client)
 
 	return server
 }
@@ -190,6 +193,103 @@ func registerRemoveLabelTool(server *mcp.Server, client *Client) {
 				return nil, nil, fmt.Errorf("failed to remove label: %w", err)
 			}
 			msg := fmt.Sprintf("Label '%s' removed successfully from %s", input.Label, input.TicketID)
+			return &mcp.CallToolResult{
+				Content: []mcp.Content{&mcp.TextContent{Text: msg}},
+			}, nil, nil
+		},
+	)
+}
+
+// registerCreateIssueTool registers the create_issue MCP tool.
+func registerCreateIssueTool(server *mcp.Server, client *Client) {
+	mcp.AddTool(
+		server,
+		&mcp.Tool{
+			Name:        "create_issue",
+			Description: "Create a new Jira ticket",
+		},
+		func(ctx context.Context, _ *mcp.CallToolRequest, input struct {
+			Project     string `json:"project" jsonschema:"The Jira project key (e.g., GAUDISW)"`
+			IssueType   string `json:"issue_type" jsonschema:"The issue type (e.g., Bug, Task)"`
+			Summary     string `json:"summary" jsonschema:"The ticket summary/title"`
+			Description string `json:"description" jsonschema:"The ticket description"`
+		}) (*mcp.CallToolResult, any, error) {
+			if input.Project == "" {
+				return nil, nil, fmt.Errorf("project is required")
+			}
+			if input.IssueType == "" {
+				return nil, nil, fmt.Errorf("issue_type is required")
+			}
+			if input.Summary == "" {
+				return nil, nil, fmt.Errorf("summary is required")
+			}
+			result, err := client.CreateIssue(ctx, input.Project, input.IssueType, input.Summary, input.Description)
+			if err != nil {
+				return nil, nil, fmt.Errorf("failed to create issue: %w", err)
+			}
+			response := map[string]string{
+				"status":    "success",
+				"ticket_id": result.Key,
+			}
+			msgBytes, err := json.Marshal(response)
+			if err != nil {
+				return nil, nil, fmt.Errorf("failed to marshal response: %w", err)
+			}
+			return &mcp.CallToolResult{
+				Content: []mcp.Content{&mcp.TextContent{Text: string(msgBytes)}},
+			}, nil, nil
+		},
+	)
+}
+
+// registerResolveIssueTool registers the resolve_issue MCP tool.
+func registerResolveIssueTool(server *mcp.Server, client *Client) {
+	mcp.AddTool(
+		server,
+		&mcp.Tool{
+			Name:        "resolve_issue",
+			Description: "Mark a Jira ticket as Resolved",
+		},
+		func(ctx context.Context, _ *mcp.CallToolRequest, input struct {
+			TicketID string `json:"ticket_id" jsonschema:"The Jira ticket ID"`
+		}) (*mcp.CallToolResult, any, error) {
+			if input.TicketID == "" {
+				return nil, nil, fmt.Errorf("ticket_id is required")
+			}
+			if err := client.ResolveIssue(ctx, input.TicketID); err != nil {
+				return nil, nil, fmt.Errorf("failed to resolve issue: %w", err)
+			}
+			msg := fmt.Sprintf("Ticket %s marked as Resolved", input.TicketID)
+			return &mcp.CallToolResult{
+				Content: []mcp.Content{&mcp.TextContent{Text: msg}},
+			}, nil, nil
+		},
+	)
+}
+
+// registerUpdateIssueTool registers the update_issue MCP tool.
+func registerUpdateIssueTool(server *mcp.Server, client *Client) {
+	mcp.AddTool(
+		server,
+		&mcp.Tool{
+			Name:        "update_issue",
+			Description: "Update a Jira ticket's summary and/or description",
+		},
+		func(ctx context.Context, _ *mcp.CallToolRequest, input struct {
+			TicketID    string  `json:"ticket_id" jsonschema:"The Jira ticket ID"`
+			Summary     *string `json:"summary,omitempty" jsonschema:"New summary/title (omit to leave unchanged)"`
+			Description *string `json:"description,omitempty" jsonschema:"New description (omit to leave unchanged)"`
+		}) (*mcp.CallToolResult, any, error) {
+			if input.TicketID == "" {
+				return nil, nil, fmt.Errorf("ticket_id is required")
+			}
+			if input.Summary == nil && input.Description == nil {
+				return nil, nil, fmt.Errorf("at least one of summary or description is required")
+			}
+			if err := client.UpdateIssue(ctx, input.TicketID, input.Summary, input.Description); err != nil {
+				return nil, nil, fmt.Errorf("failed to update issue: %w", err)
+			}
+			msg := fmt.Sprintf("Ticket %s updated", input.TicketID)
 			return &mcp.CallToolResult{
 				Content: []mcp.Content{&mcp.TextContent{Text: msg}},
 			}, nil, nil

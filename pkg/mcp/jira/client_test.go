@@ -325,3 +325,169 @@ func TestRemoveLabel(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 }
+
+func TestCreateIssue(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/rest/api/2/issue" {
+			t.Errorf("unexpected path: %s", r.URL.Path)
+		}
+		if r.Method != http.MethodPost {
+			t.Errorf("expected POST, got %s", r.Method)
+		}
+
+		var body map[string]interface{}
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			t.Fatalf("failed to decode request body: %v", err)
+		}
+		fields, ok := body["fields"].(map[string]interface{})
+		if !ok {
+			t.Fatal("expected 'fields' key in body")
+		}
+		project, ok := fields["project"].(map[string]interface{})
+		if !ok || project["key"] != "TEST" {
+			t.Errorf("expected project.key 'TEST', got %v", fields["project"])
+		}
+		if fields["summary"] != "New bug" {
+			t.Errorf("expected summary 'New bug', got %v", fields["summary"])
+		}
+		issuetype, ok := fields["issuetype"].(map[string]interface{})
+		if !ok || issuetype["name"] != "Bug" {
+			t.Errorf("expected issuetype.name 'Bug', got %v", fields["issuetype"])
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusCreated)
+		w.Write([]byte(`{"id": "18300000", "key": "TEST-999"}`))
+	}))
+	defer server.Close()
+
+	client := jira.NewClient(server.URL, "test-pat")
+	result, err := client.CreateIssue(context.Background(), "TEST", "Bug", "New bug", "Description text")
+
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if result.Key != "TEST-999" {
+		t.Errorf("expected key 'TEST-999', got '%s'", result.Key)
+	}
+}
+
+func TestCreateIssue_MissingRequiredField(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"errors": map[string]string{"customfield_10050": "Custom field is required."},
+		})
+	}))
+	defer server.Close()
+
+	client := jira.NewClient(server.URL, "test-pat")
+	_, err := client.CreateIssue(context.Background(), "TEST", "Bug", "New bug", "")
+
+	if err == nil {
+		t.Fatal("expected error for missing required field")
+	}
+	if !strings.Contains(err.Error(), "customfield_10050") {
+		t.Errorf("expected error to surface Jira's field-level error, got: %v", err)
+	}
+}
+
+func TestResolveIssue(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.Method == http.MethodGet && r.URL.Path == "/rest/api/2/issue/TEST-123/transitions":
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusOK)
+			w.Write([]byte(`{"transitions": [
+				{"id": "11", "to": {"name": "Assigned"}},
+				{"id": "91", "to": {"name": "Resolved"}}
+			]}`))
+		case r.Method == http.MethodPost && r.URL.Path == "/rest/api/2/issue/TEST-123/transitions":
+			var body map[string]interface{}
+			if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+				t.Fatalf("failed to decode request body: %v", err)
+			}
+			transition, ok := body["transition"].(map[string]interface{})
+			if !ok || transition["id"] != "91" {
+				t.Errorf("expected to transition using id '91' (Resolved), got %v", body["transition"])
+			}
+			w.WriteHeader(http.StatusNoContent)
+		default:
+			t.Errorf("unexpected request: %s %s", r.Method, r.URL.Path)
+			w.WriteHeader(http.StatusNotFound)
+		}
+	}))
+	defer server.Close()
+
+	client := jira.NewClient(server.URL, "test-pat")
+	err := client.ResolveIssue(context.Background(), "TEST-123")
+
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestResolveIssue_NoResolvedTransitionAvailable(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte(`{"transitions": [{"id": "11", "to": {"name": "Assigned"}}]}`))
+	}))
+	defer server.Close()
+
+	client := jira.NewClient(server.URL, "test-pat")
+	err := client.ResolveIssue(context.Background(), "TEST-123")
+
+	if err == nil {
+		t.Fatal("expected error when no 'Resolved' transition is available")
+	}
+	if !strings.Contains(err.Error(), "Resolved") {
+		t.Errorf("expected error to mention the missing Resolved transition, got: %v", err)
+	}
+}
+
+func TestUpdateIssue(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/rest/api/2/issue/TEST-123" {
+			t.Errorf("unexpected path: %s", r.URL.Path)
+		}
+		if r.Method != http.MethodPut {
+			t.Errorf("expected PUT, got %s", r.Method)
+		}
+
+		var body map[string]interface{}
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			t.Fatalf("failed to decode request body: %v", err)
+		}
+		fields, ok := body["fields"].(map[string]interface{})
+		if !ok {
+			t.Fatal("expected 'fields' key in body")
+		}
+		if fields["summary"] != "Updated title" {
+			t.Errorf("expected summary 'Updated title', got %v", fields["summary"])
+		}
+		if _, hasDescription := fields["description"]; hasDescription {
+			t.Error("description should not be in the update when only summary was provided")
+		}
+
+		w.WriteHeader(http.StatusNoContent)
+	}))
+	defer server.Close()
+
+	client := jira.NewClient(server.URL, "test-pat")
+	summary := "Updated title"
+	err := client.UpdateIssue(context.Background(), "TEST-123", &summary, nil)
+
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestUpdateIssue_NoFieldsProvided(t *testing.T) {
+	client := jira.NewClient("http://unused", "test-pat")
+	err := client.UpdateIssue(context.Background(), "TEST-123", nil, nil)
+
+	if err == nil {
+		t.Fatal("expected error when neither summary nor description is provided")
+	}
+}
