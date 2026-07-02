@@ -11,6 +11,7 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 	"go.uber.org/zap"
+	"jira-triage-agent/pkg/api"
 	"jira-triage-agent/pkg/health"
 	"jira-triage-agent/pkg/logger"
 	jiramcp "jira-triage-agent/pkg/mcp/jira"
@@ -28,8 +29,9 @@ func main() {
 	}
 
 	jiraClient := jiramcp.NewClient(cfg.JiraURL, cfg.JiraAPIToken)
+	p := buildPoller(cfg, jiraClient)
 
-	r := setupRouter(cfg, jiraClient, zapLog)
+	r := setupRouter(cfg, jiraClient, p, zapLog)
 
 	server := &http.Server{
 		Addr:         ":" + cfg.Port,
@@ -42,7 +44,7 @@ func main() {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	startPoller(ctx, cfg, jiraClient, zapLog)
+	go p.Run(ctx)
 	startShutdownHandler(ctx, cancel, server, zapLog)
 
 	zapLog.Info("starting jira-triage-agent",
@@ -61,7 +63,7 @@ func main() {
 	zapLog.Info("server stopped")
 }
 
-func setupRouter(cfg *Config, jiraClient *jiramcp.Client, zapLog *zap.Logger) chi.Router {
+func setupRouter(cfg *Config, jiraClient *jiramcp.Client, p *poller.Poller, zapLog *zap.Logger) chi.Router {
 	r := chi.NewRouter()
 
 	healthHandler := health.NewHandler(zapLog)
@@ -76,10 +78,14 @@ func setupRouter(cfg *Config, jiraClient *jiramcp.Client, zapLog *zap.Logger) ch
 	r.Handle("/mcp/jira", jiraMCPHandler)
 	zapLog.Info("registered Jira MCP endpoint", zap.String("endpoint", "/mcp/jira"))
 
+	pollHandler := api.NewPollHandler(p, zapLog)
+	r.Post("/poll", pollHandler.TriggerPoll)
+	zapLog.Info("registered poll trigger endpoint", zap.String("endpoint", "/poll"))
+
 	return r
 }
 
-func startPoller(ctx context.Context, cfg *Config, jiraClient *jiramcp.Client, _ *zap.Logger) {
+func buildPoller(cfg *Config, jiraClient *jiramcp.Client) *poller.Poller {
 	dispatcher := poller.NewHTTPDispatcher(cfg.AgentURL + "/triage")
 
 	pollerCfg := poller.Config{
@@ -93,8 +99,7 @@ func startPoller(ctx context.Context, cfg *Config, jiraClient *jiramcp.Client, _
 
 	pollerLog := logger.WithComponent("poller")
 	jiraPollerClient := &jiraPollerAdapter{client: jiraClient}
-	p := poller.New(jiraPollerClient, dispatcher, pollerCfg, poller.WithLogger(pollerLog))
-	go p.Run(ctx)
+	return poller.New(jiraPollerClient, dispatcher, pollerCfg, poller.WithLogger(pollerLog))
 }
 
 func startShutdownHandler(ctx context.Context, cancel context.CancelFunc, server *http.Server, zapLog *zap.Logger) {
