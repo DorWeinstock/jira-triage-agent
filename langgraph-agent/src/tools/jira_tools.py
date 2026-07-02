@@ -256,6 +256,51 @@ class JiraTools(BaseMCPClient):
                 result["success"] = "successfully" in str(response).lower()
         return result
 
+    async def remove_label(self, ticket_id: str, label: str) -> dict[str, Any]:
+        """Remove a label from a Jira ticket.
+
+        Args:
+            ticket_id: Jira ticket ID (e.g., PROJ-123)
+            label: Label to remove
+
+        Returns:
+            Dictionary with success status:
+            - content: Response from MCP
+            - success: Whether the label was removed successfully
+            - raw: Raw response from MCP
+
+        Raises:
+            ValidationError: If ticket ID or label is invalid
+            MCPConnectionError: If connection to MCP server fails
+        """
+        self._validate_ticket_id(ticket_id)
+        if not label or not label.strip():
+            raise ValidationError(
+                "Label cannot be empty",
+                field="label",
+                value=label,
+                agent_name=self.client_name
+            )
+
+        response = await self.call_tool("remove_label", {
+            "ticket_id": ticket_id.upper(),
+            "label": label.strip()
+        })
+        logger.info(f"Removed label '{label}' from {ticket_id}")
+
+        result: dict[str, Any] = {"content": response, "success": False, "raw": response}
+        if response:
+            try:
+                data = json.loads(response)
+                result["success"] = data.get("status") == "success"
+            except (json.JSONDecodeError, TypeError):
+                logger.warning(
+                    "remove_label: unexpected non-JSON response from MCP; "
+                    "falling back to string detection"
+                )
+                result["success"] = "successfully" in str(response).lower()
+        return result
+
     def _transition_base_url(self) -> str:
         """Return the REST base URL for direct API calls.
 

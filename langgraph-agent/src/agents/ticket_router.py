@@ -19,10 +19,17 @@ class TicketRouter:
       triage-agent-done label.
     """
 
-    def __init__(self, jira_tools: JiraTools, team_members: list[str], processed_label: str):
+    def __init__(
+        self,
+        jira_tools: JiraTools,
+        team_members: list[str],
+        processed_label: str,
+        in_progress_label: str,
+    ):
         self._jira = jira_tools
         self._team_members = team_members
         self._processed_label = processed_label
+        self._in_progress_label = in_progress_label
 
     async def run(self, state: AgentState, rr_index: int) -> dict[str, Any]:
         ticket_id = state.get("ticket_id", "")
@@ -56,6 +63,11 @@ class TicketRouter:
         except Exception as exc:
             logger.warning("Failed to stamp processed label on %s: %s", ticket_id, exc)
 
+        try:
+            await self._jira.remove_label(ticket_id, self._in_progress_label)
+        except Exception as exc:
+            logger.warning("Failed to remove in-progress label on %s: %s", ticket_id, exc)
+
         return {"triage_comment": comment, "triage_complete": True}
 
     async def _handle_valid(self, state: AgentState, ticket_id: str, rr_index: int) -> dict[str, Any]:
@@ -71,6 +83,11 @@ class TicketRouter:
             await self._jira.add_label(ticket_id, self._processed_label)
         except Exception as exc:
             logger.warning("Failed to stamp processed label on %s: %s", ticket_id, exc)
+
+        try:
+            await self._jira.remove_label(ticket_id, self._in_progress_label)
+        except Exception as exc:
+            logger.warning("Failed to remove in-progress label on %s: %s", ticket_id, exc)
 
         return {"assigned_to": assignee, "triage_complete": True}
 

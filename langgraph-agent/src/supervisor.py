@@ -30,6 +30,7 @@ def create_triage_graph(jira_tools: JiraTools) -> Any:
         jira_tools=jira_tools,
         team_members=settings.team_members,
         processed_label=settings.processed_label,
+        in_progress_label=settings.in_progress_label,
     )
 
     # Shared round-robin counter (single server process, good enough for our scale)

@@ -44,6 +44,12 @@ class Settings(BaseSettings):
         default="triage-agent-done",
         alias="PROCESSED_LABEL",
     )
+    # Must match pkg/poller/poller.go's LabelInvestigationInProgress constant —
+    # stamped by the Go poller before dispatch, cleared here once triage completes.
+    in_progress_label: str = Field(
+        default="triage-in-progress",
+        alias="IN_PROGRESS_LABEL",
+    )
 
     # Rate limiting
     triage_rate_limit: str = Field(default="20/minute", alias="TRIAGE_RATE_LIMIT")

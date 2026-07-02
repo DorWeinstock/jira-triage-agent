@@ -197,3 +197,25 @@ func TestServerIntegration_AddLabel(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 }
+
+// TestServerIntegration_RemoveLabel tests the remove_label functionality.
+func TestServerIntegration_RemoveLabel(t *testing.T) {
+	mockServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/rest/api/2/issue/TEST-123" {
+			t.Errorf("unexpected path: %s", r.URL.Path)
+		}
+		if r.Method != http.MethodPut {
+			t.Errorf("expected PUT, got %s", r.Method)
+		}
+		w.WriteHeader(http.StatusNoContent)
+	}))
+	defer mockServer.Close()
+
+	client := jira.NewClient(mockServer.URL, "test-pat")
+	_ = jira.NewMCPServer(client)
+
+	err := client.RemoveLabel(context.Background(), "TEST-123", "triage-in-progress")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}

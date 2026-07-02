@@ -27,6 +27,7 @@ func NewMCPServer(client *Client) *mcp.Server {
 	registerSearchTicketsTool(server, client)
 	registerAddCommentTool(server, client)
 	registerAddLabelTool(server, client)
+	registerRemoveLabelTool(server, client)
 	registerUpdateAssigneeTool(server, client)
 
 	return server
@@ -160,6 +161,35 @@ func registerAddLabelTool(server *mcp.Server, client *Client) {
 				return nil, nil, fmt.Errorf("failed to add label: %w", err)
 			}
 			msg := fmt.Sprintf("Label '%s' added successfully to %s", input.Label, input.TicketID)
+			return &mcp.CallToolResult{
+				Content: []mcp.Content{&mcp.TextContent{Text: msg}},
+			}, nil, nil
+		},
+	)
+}
+
+// registerRemoveLabelTool registers the remove_label MCP tool.
+func registerRemoveLabelTool(server *mcp.Server, client *Client) {
+	mcp.AddTool(
+		server,
+		&mcp.Tool{
+			Name:        "remove_label",
+			Description: "Remove a label from a Jira ticket",
+		},
+		func(ctx context.Context, _ *mcp.CallToolRequest, input struct {
+			TicketID string `json:"ticket_id" jsonschema:"The Jira ticket ID"`
+			Label    string `json:"label" jsonschema:"The label to remove"`
+		}) (*mcp.CallToolResult, any, error) {
+			if input.TicketID == "" {
+				return nil, nil, fmt.Errorf("ticket_id is required")
+			}
+			if input.Label == "" {
+				return nil, nil, fmt.Errorf("label is required")
+			}
+			if err := client.RemoveLabel(ctx, input.TicketID, input.Label); err != nil {
+				return nil, nil, fmt.Errorf("failed to remove label: %w", err)
+			}
+			msg := fmt.Sprintf("Label '%s' removed successfully from %s", input.Label, input.TicketID)
 			return &mcp.CallToolResult{
 				Content: []mcp.Content{&mcp.TextContent{Text: msg}},
 			}, nil, nil
