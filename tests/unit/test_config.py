@@ -198,6 +198,48 @@ class TestEnvironmentOverrides:
         assert not hasattr(settings, "unknown_setting_xyz")
 
 
+class TestLangfuseSettings:
+    """Test Langfuse observability configuration."""
+
+    def test_langfuse_disabled_by_default(self):
+        """langfuse_enabled should be False when no Langfuse env vars are set."""
+        from src.config import get_settings
+        get_settings.cache_clear()
+
+        settings = get_settings()
+        assert settings.langfuse_enabled is False
+
+    def test_langfuse_enabled_when_all_vars_set(self, monkeypatch):
+        """langfuse_enabled should be True once host, public key, and secret key are all set."""
+        monkeypatch.setenv("LANGFUSE_HOST", "https://langfuse.example.com")
+        monkeypatch.setenv("LANGFUSE_PUBLIC_KEY", "pk-test")
+        monkeypatch.setenv("LANGFUSE_SECRET_KEY", "sk-test")
+
+        from src.config import get_settings
+        get_settings.cache_clear()
+
+        settings = get_settings()
+        assert settings.langfuse_enabled is True
+
+    def test_langfuse_disabled_when_key_missing(self, monkeypatch):
+        """langfuse_enabled should stay False if only some of the vars are set."""
+        monkeypatch.setenv("LANGFUSE_HOST", "https://langfuse.example.com")
+        monkeypatch.setenv("LANGFUSE_PUBLIC_KEY", "pk-test")
+
+        from src.config import get_settings
+        get_settings.cache_clear()
+
+        settings = get_settings()
+        assert settings.langfuse_enabled is False
+
+    def test_create_langfuse_handler_returns_none_when_disabled(self):
+        """create_langfuse_handler() should return None if Langfuse isn't configured."""
+        from src.config import create_langfuse_handler, get_settings
+        get_settings.cache_clear()
+
+        assert create_langfuse_handler() is None
+
+
 class TestLLMFactories:
     """Test LLM factory functions."""
 

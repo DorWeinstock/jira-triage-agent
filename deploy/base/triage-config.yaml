@@ -29,3 +29,7 @@ data:
   # Set LANGCHAIN_API_KEY in the secret to enable tracing
   LANGCHAIN_TRACING_V2: "false"
   LANGCHAIN_PROJECT: "jira-triage-agent"
+
+  # ── Langfuse observability ─────────────────────────────────────
+  # Set LANGFUSE_PUBLIC_KEY/LANGFUSE_SECRET_KEY in the secret to enable tracing
+  LANGFUSE_HOST: "https://langfuse-k8s-infra.iil.labsad.intel.com"

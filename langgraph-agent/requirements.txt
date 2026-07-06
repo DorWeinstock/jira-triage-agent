@@ -20,3 +20,5 @@ uvicorn>=0.23.0
 slowapi>=0.1.9
 # Fuzzy string matching for log deduplication
 rapidfuzz>=3.0.0
+# Langfuse observability (optional — disabled unless LANGFUSE_* env vars are set)
+langfuse>=4.0.0

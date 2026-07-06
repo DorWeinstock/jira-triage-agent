@@ -14,7 +14,7 @@ from slowapi.middleware import SlowAPIMiddleware
 
 from .supervisor import get_default_graph
 from .tools.jira_tools import JiraTools
-from .config import get_settings
+from .config import create_langfuse_handler, get_settings
 
 logger = logging.getLogger(__name__)
 
@@ -35,17 +35,19 @@ def _validate_ticket_id(ticket_id: str) -> None:
 # Global state initialised at startup
 _jira_tools: JiraTools | None = None
 _graph = None
+_langfuse_handler = None
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    global _jira_tools, _graph
+    global _jira_tools, _graph, _langfuse_handler
 
     settings = get_settings()
     jira_mcp_url = os.getenv("JIRA_MCP_ENDPOINT", settings.jira_mcp_endpoint)
 
     _jira_tools = JiraTools(mcp_endpoint=jira_mcp_url)
     _graph = get_default_graph(_jira_tools)
+    _langfuse_handler = create_langfuse_handler()
 
     logger.info("Triage agent started. Jira MCP: %s", jira_mcp_url)
 
@@ -92,8 +94,10 @@ async def triage(request: Request, body: TriageRequest):
     logger.info("Triaging ticket %s", body.ticket_id)
 
     try:
+        config = {"callbacks": [_langfuse_handler]} if _langfuse_handler else {}
         result = await _graph.ainvoke(
             {"ticket_id": body.ticket_id, "messages": []},
+            config=config,
         )
 
         if result.get("error"):

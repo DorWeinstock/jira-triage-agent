@@ -40,6 +40,19 @@ spec:
               name: jira-triage-agent-secret
               key: langchain-api-key
               optional: true
+        # Langfuse key pair (optional — tracing disabled if absent)
+        - name: LANGFUSE_PUBLIC_KEY
+          valueFrom:
+            secretKeyRef:
+              name: jira-triage-agent-secret
+              key: langfuse-public-key
+              optional: true
+        - name: LANGFUSE_SECRET_KEY
+          valueFrom:
+            secretKeyRef:
+              name: jira-triage-agent-secret
+              key: langfuse-secret-key
+              optional: true
         # Proxy (trailing dot = absolute FQDN, avoids ndots:5 search-domain
         # resolution failures on hldc03 — see proxy-config ConfigMap).
         - name: HTTP_PROXY

@@ -67,6 +67,16 @@ class Settings(BaseSettings):
     langchain_project: str = Field(default="jira-triage-agent", alias="LANGCHAIN_PROJECT")
     langchain_api_key: str = Field(default="", alias="LANGCHAIN_API_KEY")
 
+    # Langfuse observability (optional — disable by leaving the key pair unset)
+    langfuse_host: str = Field(default="", alias="LANGFUSE_HOST")
+    langfuse_public_key: str = Field(default="", alias="LANGFUSE_PUBLIC_KEY")
+    langfuse_secret_key: str = Field(default="", alias="LANGFUSE_SECRET_KEY")
+
+    @computed_field
+    @property
+    def langfuse_enabled(self) -> bool:
+        return bool(self.langfuse_host and self.langfuse_public_key and self.langfuse_secret_key)
+
     log_level: str = "INFO"
 
 
@@ -107,3 +117,21 @@ def create_llm(temperature: float | None = None):
 def create_extraction_llm():
     settings = get_settings()
     return create_llm(temperature=settings.temperature_extraction)
+
+
+def create_langfuse_handler():
+    """Create a Langfuse CallbackHandler, or None if not configured.
+
+    The Langfuse client auto-configures from the LANGFUSE_PUBLIC_KEY/
+    LANGFUSE_SECRET_KEY/LANGFUSE_HOST env vars — CallbackHandler() just
+    picks up that already-initialized global client.
+    """
+    settings = get_settings()
+    if not settings.langfuse_enabled:
+        return None
+
+    from langfuse.langchain import CallbackHandler
+
+    logger.info("Langfuse tracing enabled: host=%s", settings.langfuse_host)
+
+    return CallbackHandler()
