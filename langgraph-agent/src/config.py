@@ -50,6 +50,14 @@ class Settings(BaseSettings):
         default="triage-in-progress",
         alias="IN_PROGRESS_LABEL",
     )
+    verdict_valid_label: str = Field(
+        default="triage-verdict-valid",
+        alias="VERDICT_VALID_LABEL",
+    )
+    verdict_invalid_label: str = Field(
+        default="triage-verdict-invalid",
+        alias="VERDICT_INVALID_LABEL",
+    )
 
     # Rate limiting
     triage_rate_limit: str = Field(default="20/minute", alias="TRIAGE_RATE_LIMIT")

@@ -301,6 +301,59 @@ class JiraTools(BaseMCPClient):
                 result["success"] = "successfully" in str(response).lower()
         return result
 
+    async def update_issue(
+        self, ticket_id: str, summary: str | None = None, description: str | None = None
+    ) -> dict[str, Any]:
+        """Update a Jira ticket's summary and/or description.
+
+        Replaces the full field value server-side — there is no append.
+
+        Args:
+            ticket_id: Jira ticket ID (e.g., PROJ-123)
+            summary: New summary/title (omit to leave unchanged)
+            description: New description (omit to leave unchanged)
+
+        Returns:
+            Dictionary with success status:
+            - content: Response from MCP
+            - success: Whether the update succeeded
+            - raw: Raw response from MCP
+
+        Raises:
+            ValidationError: If ticket ID is invalid or neither field is given
+            MCPConnectionError: If connection to MCP server fails
+        """
+        self._validate_ticket_id(ticket_id)
+        if summary is None and description is None:
+            raise ValidationError(
+                "At least one of summary or description is required",
+                field="summary/description",
+                value=None,
+                agent_name=self.client_name,
+            )
+
+        params: dict[str, Any] = {"ticket_id": ticket_id.upper()}
+        if summary is not None:
+            params["summary"] = summary
+        if description is not None:
+            params["description"] = description
+
+        response = await self.call_tool("update_issue", params)
+        logger.info(f"Updated {ticket_id}")
+
+        result: dict[str, Any] = {"content": response, "success": False, "raw": response}
+        if response:
+            try:
+                data = json.loads(response)
+                result["success"] = data.get("status") == "success"
+            except (json.JSONDecodeError, TypeError):
+                logger.warning(
+                    "update_issue: unexpected non-JSON response from MCP; "
+                    "falling back to string detection"
+                )
+                result["success"] = "updated" in str(response).lower()
+        return result
+
     def _transition_base_url(self) -> str:
         """Return the REST base URL for direct API calls.
 

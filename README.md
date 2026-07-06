@@ -1,6 +1,6 @@
 # Jira Triage Agent
 
-An automated triage system for AI-generated Jira tickets. It polls Jira every hour for tickets labelled `ai-generated`, uses an LLM to classify them as spam or actionable, then either reassigns spam back to the reporter with a polite comment or routes valid tickets to team members via round-robin.
+An automated triage system for AI-generated Jira tickets. It polls Jira every hour for tickets labelled `ai-generated`, uses an LLM to classify them as spam or actionable, then either reassigns spam back to the reporter or routes valid tickets to team members via round-robin — stamping a verdict label and a judgment note in the description either way.
 
 ## What It Does
 
@@ -15,12 +15,12 @@ Jira ticket with label "ai-generated"
           │
           ├─ SpamEvaluator (LLM) ──► is_spam?
           │
-          ├─ SPAM → reassign to reporter + comment explaining why
+          ├─ SPAM → reassign to reporter + judgment note in description
           │
           └─ VALID → assign to next team member (round-robin)
           │
           ▼
-  stamp label "triage-agent-done" (prevents re-processing)
+  stamp label "triage-agent-done" + verdict label, write judgment note
 ```
 
 **Spam criteria** (evaluated by LLM):
@@ -52,7 +52,7 @@ flowchart TB
     LA -- "③ get_ticket ×2 (read_ticket)" --> JA
     LA -- "④ POST /v1/chat/completions" --> VLLM
     VLLM -- "⑤ verdict JSON" --> LA
-    LA -- "⑥ update_assignee, add_comment,<br/>add_label, remove_label (route)" --> JA
+    LA -- "⑥ update_assignee, update_issue,<br/>add_label, remove_label (route)" --> JA
 
     linkStyle 0,1 stroke:#00ADD8,color:#00ADD8
     linkStyle 2,3,5 stroke:#4B8BBE,color:#4B8BBE
@@ -67,7 +67,7 @@ initialize → read_ticket → evaluate → route → END
 
 - `read_ticket` — fetches ticket content and reporter via Jira MCP
 - `evaluate` — calls `SpamEvaluator` (LLM returns structured JSON verdict)
-- `route` — calls `TicketRouter` (assigns + comments + stamps label)
+- `route` — calls `TicketRouter` (assigns, stamps `triage-agent-done` + a verdict label, writes a judgment note into the description)
 
 ### MCP Tools (Go → Python)
 
@@ -78,10 +78,10 @@ The Go monolith exposes a Jira MCP server at `/mcp/jira`.
 | Tool | Description |
 |---|---|
 | `get_ticket` | Fetch ticket details (summary, description, reporter, comments) |
-| `add_comment` | Post a comment to a ticket |
 | `add_label` | Add a label to a ticket |
 | `remove_label` | Remove a label from a ticket — clears `triage-in-progress` once a ticket is actually triaged |
 | `update_assignee` | Assign ticket to a user (Jira Server username) |
+| `update_issue` | Replace a ticket's summary and/or description — used to write the triage judgment note into the description (truncate-and-replace at a marker, since re-triage can run more than once) |
 
 **Available, not yet called by the automated flow** (usable for manual/future use):
 
@@ -90,7 +90,7 @@ The Go monolith exposes a Jira MCP server at `/mcp/jira`.
 | `search_tickets` | Search tickets via JQL |
 | `create_issue` | Open a new ticket (project, issue type, summary, description). Note: some projects require additional fields (e.g. custom fields, components) beyond these — Jira's own error response names them if so, since this instance's `createmeta` endpoint wasn't reachable to pre-validate. |
 | `resolve_issue` | Transition a ticket to Resolved. Looks up the transition ID dynamically via the transitions endpoint rather than assuming a fixed one, since the same target status can have a different transition ID depending on the ticket's current status. |
-| `update_issue` | Update a ticket's summary and/or description |
+| `add_comment` | Post a comment to a ticket |
 
 ### HTTP Endpoints (jira-agent)
 
@@ -250,6 +250,8 @@ kubectl logs -l app=vllm-qwen3 -n jira-k8s-agent -f
 | `ai-generated` | Trigger — agent picks up tickets with this label |
 | `triage-in-progress` | Guard — prevents duplicate processing |
 | `triage-agent-done` | Done — ticket has been triaged, won't be picked up again |
+| `triage-verdict-valid` | Verdict — ticket judged actionable, assigned to a team member |
+| `triage-verdict-invalid` | Verdict — ticket judged spam/out-of-scope, reassigned to reporter |
 
 ## Repository Structure
 
