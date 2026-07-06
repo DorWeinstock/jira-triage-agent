@@ -44,7 +44,6 @@ func main() {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	go p.Run(ctx)
 	startShutdownHandler(ctx, cancel, server, zapLog)
 
 	zapLog.Info("starting jira-triage-agent",

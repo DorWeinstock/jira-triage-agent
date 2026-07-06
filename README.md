@@ -1,6 +1,6 @@
 # Jira Triage Agent
 
-An automated triage system for AI-generated Jira tickets. It polls Jira every hour for tickets labelled `ai-generated`, uses an LLM to classify them as spam or actionable, then either reassigns spam back to the reporter or routes valid tickets to team members via round-robin — stamping a verdict label and a judgment note in the description either way.
+An automated triage system for AI-generated Jira tickets. It polls Jira on demand (via `POST /poll`) for tickets labelled `ai-generated`, uses an LLM to classify them as spam or actionable, then either reassigns spam back to the reporter or routes valid tickets to team members via round-robin — stamping a verdict label and a judgment note in the description either way.
 
 ## What It Does
 
@@ -8,7 +8,7 @@ An automated triage system for AI-generated Jira tickets. It polls Jira every ho
 Jira ticket with label "ai-generated"
           │
           ▼
-  jira-agent (Go) polls every 1h
+  jira-agent (Go) polls on demand (POST /poll)
           │
           ▼
   LangGraph triage workflow (Python)
@@ -99,11 +99,11 @@ The Go monolith exposes a Jira MCP server at `/mcp/jira`.
 | `/health` | GET | Liveness check |
 | `/ready` | GET | Readiness check |
 | `/mcp/jira` | POST | MCP tool server (see above) |
-| `/poll` | POST | Trigger a poll cycle immediately (`202 Accepted`, runs in the background) — instead of waiting for the next hourly tick or restarting the pod |
+| `/poll` | POST | Trigger a poll cycle (`202 Accepted`, runs in the background) — the only way a poll happens; there is no automatic ticker |
 
 ### Triggering a full triage cycle manually
 
-`/poll` is a `ClusterIP`-only endpoint (no external ingress), so reaching it from outside the cluster needs a port-forward first. This runs the exact same cycle as the hourly ticker — search Jira, dispatch every matching ticket, and let each one flow through the full `initialize → read_ticket → evaluate → route` workflow — just triggered on demand instead of waiting up to an hour:
+`/poll` is a `ClusterIP`-only endpoint (no external ingress), so reaching it from outside the cluster needs a port-forward first. This searches Jira, dispatches every matching ticket, and lets each one flow through the full `initialize → read_ticket → evaluate → route` workflow:
 
 ```bash
 # Terminal 1 — forward the ClusterIP service to your machine
